@@ -74,7 +74,7 @@ struct Molecules {
     e: i32,
 }
 
-struct Samples {
+struct Sample {
     id: u8,
     carried_by: CarriedBy,
     rank: SampleRank,
@@ -82,6 +82,7 @@ struct Samples {
     cost: Molecules
 }
 
+// TODO: move most of this into robot class, add storage class
 struct TurnInput {
     target: String,
     eta: u8,
@@ -89,18 +90,47 @@ struct TurnInput {
     storage: Molecules,
     expertise: Molecules,
     available: Molecules,
-    samples: Samples
-}
-
-impl TurnInput {
-    /* pub fn new() -> Self {
-        
-    } */
+    samples: Sample
 }
 
 struct Robot {
     latest_input: TurnInput,
     projects: Vec<Molecules>
+}
+
+impl Robot {
+    pub fn new() -> Self {
+        Self {
+            latest_input: TurnInput::new(),
+            projects: Vec::new()
+        }
+    }
+}
+
+impl Sample {
+    pub fn new() -> Self {
+        Self {
+            id: 0,
+            carried_by: CarriedBy::Other,
+            rank: SampleRank::LittleHealth,
+            health: 0,
+            cost: Molecules::new()
+        }
+    }
+}
+
+impl TurnInput {
+    pub fn new() -> Self {
+        Self {
+            target: String::new(),
+            eta: 0,
+            score: 0,
+            storage: Molecules::new(),
+            expertise: Molecules::new(),
+            available: Molecules::new(),
+            samples: Sample::new()
+        }
+    }
 }
 
 impl Molecules {
@@ -191,8 +221,14 @@ fn parse_initial_input() -> Vec<Molecules> {
 }
 
 fn main() {
+    let mut my_robot = Robot::new();
+    let mut enemy_robot = Robot::new();
+
     let projects = parse_initial_input();
-    println!("Hello, world!");
+    loop {
+        TurnInput::new(); // TODO: add turn parser
+        println!("Hello, world!");
+    }
 }
 
 #[cfg(test)]
