@@ -19,19 +19,23 @@ macro_rules! parse_input {
     ($x:expr, $t:ty) => ($x.trim().parse::<$t>().unwrap());
 }
 
+#[derive(Debug)]
 enum Module {
     Sample,
     Diagnosis,
     Molecule,
     Laboratory,
+    Spawn,
 }
 
+#[derive(Debug)]
 enum CarriedBy {
     Me = 0,
     Other = 1,
     Cloud = -1,
 }
 
+#[derive(Debug)]
 enum RoboState {
     SampleModule,
     DiagnosisModule,
@@ -43,18 +47,21 @@ enum RoboState {
     CompletingProject,
 }
 
+#[derive(Debug)]
 enum SampleRank {
     LotsOfHealth = 3,
     SomeHealth = 2,
     LittleHealth = 1,
 }
 
+#[derive(Debug)]
 enum ConnectOptions {
     SampleId,
     SampleRank(SampleRank),
     MoleculeType,
 }
 
+#[derive(Debug)]
 enum Commands {
     Goto(Module),
     Connect(ConnectOptions),
@@ -74,6 +81,7 @@ struct Molecules {
     e: i32,
 }
 
+#[derive(Debug)]
 struct Sample {
     id: u8,
     carried_by: CarriedBy,
@@ -82,55 +90,22 @@ struct Sample {
     cost: Molecules
 }
 
-// TODO: move most of this into robot class, add storage class
-struct TurnInput {
-    target: String,
+#[derive(Debug)]
+struct Memory {
+    projects: Vec<Molecules>,
+    my_robot: Robot,
+    enemy_robot: Robot,
+    available: Molecules,
+    samples: Vec<Sample>
+}
+
+#[derive(Debug)]
+struct Robot {
+    target: Module,
     eta: u8,
     score: i32,
     storage: Molecules,
     expertise: Molecules,
-    available: Molecules,
-    samples: Sample
-}
-
-struct Robot {
-    latest_input: TurnInput,
-    projects: Vec<Molecules>
-}
-
-impl Robot {
-    pub fn new() -> Self {
-        Self {
-            latest_input: TurnInput::new(),
-            projects: Vec::new()
-        }
-    }
-}
-
-impl Sample {
-    pub fn new() -> Self {
-        Self {
-            id: 0,
-            carried_by: CarriedBy::Other,
-            rank: SampleRank::LittleHealth,
-            health: 0,
-            cost: Molecules::new()
-        }
-    }
-}
-
-impl TurnInput {
-    pub fn new() -> Self {
-        Self {
-            target: String::new(),
-            eta: 0,
-            score: 0,
-            storage: Molecules::new(),
-            expertise: Molecules::new(),
-            available: Molecules::new(),
-            samples: Sample::new()
-        }
-    }
 }
 
 impl Molecules {
@@ -141,6 +116,20 @@ impl Molecules {
             c: 0,
             d: 0,
             e: 0,
+        }
+    }
+
+    pub fn from_slice(slice: &[&str]) -> Self {
+        if slice.len() >= 5 {
+            Self {
+                a: parse_input!(slice[0], i32),
+                b: parse_input!(slice[1], i32),
+                c: parse_input!(slice[2], i32),
+                d: parse_input!(slice[3], i32),
+                e: parse_input!(slice[4], i32),
+            }
+        } else {
+            panic!("Tried reading molecule from a short slice");
         }
     }
 
@@ -174,6 +163,75 @@ impl Molecules {
 
 }
 
+impl Robot {
+    pub fn new() -> Self {
+        Self {
+            target: Module::Spawn,
+            eta: 0,
+            score: 0,
+            storage: Molecules::new(),
+            expertise: Molecules::new()
+        }
+    }
+
+    fn set_from_inputs(&mut self, inputs: Vec<&str>) {
+        self.target = Module::from_str(inputs[0].trim()).unwrap();
+        self.eta = parse_input!(inputs[1], u8);
+        self.score = parse_input!(inputs[2], i32);
+        self.storage = Molecules::from_slice(&inputs[3..7]);
+        self.expertise = Molecules::from_slice(&inputs[8..12]);
+    }
+}
+
+impl Sample {
+    pub fn new() -> Self {
+        Self {
+            id: 0,
+            carried_by: CarriedBy::Other,
+            rank: SampleRank::LittleHealth,
+            health: 0,
+            cost: Molecules::new()
+        }
+    }
+}
+
+impl Memory {
+    pub fn new() -> Self {
+        Self {
+            projects: Vec::new(),
+            my_robot: Robot::new(),
+            enemy_robot: Robot::new(),
+            available: Molecules::new(),
+            samples: Vec::new()
+        }
+    }
+
+    pub fn parse_initial_input(&mut self) {
+        let mut input_line = String::new();
+        io::stdin().read_line(&mut input_line).unwrap();
+        let project_count = parse_input!(input_line, i32);
+        
+        self.projects = Vec::new();
+        for _ in 0..project_count {
+            io::stdin().read_line(&mut input_line).unwrap();
+            let inputs = input_line.split_whitespace().collect::<Vec<_>>();
+            self.projects.push(Molecules::from_slice(&inputs[0..4]));
+        }
+    }
+
+    pub fn process_turn_input(&mut self) {
+        let mut input_line = String::new();
+        io::stdin().read_line(&mut input_line).unwrap();
+        self.my_robot.set_from_inputs(input_line.split_whitespace().collect::<Vec<_>>());
+        io::stdin().read_line(&mut input_line).unwrap();
+        self.enemy_robot.set_from_inputs(input_line.split_whitespace().collect::<Vec<_>>());
+        
+        io::stdin().read_line(&mut input_line).unwrap();
+        let inputs = input_line.split_whitespace().collect::<Vec<_>>();
+        self.available = Molecules::from_slice(&inputs[0..4]);
+    }
+}
+
 impl Add for Molecules {
     type Output = Molecules;
 
@@ -200,34 +258,25 @@ impl Sub for Molecules {
     }
 }
 
-fn parse_initial_input() -> Vec<Molecules> {
-    let mut input_line = String::new();
-    io::stdin().read_line(&mut input_line).unwrap();
-    let project_count = parse_input!(input_line, i32);
-    
-    let mut projects = Vec::new();
-    for _ in 0..project_count {
-        io::stdin().read_line(&mut input_line).unwrap();
-        let inputs = input_line.split_whitespace().collect::<Vec<_>>();
-        let a = parse_input!(inputs[0], i32);
-        let b = parse_input!(inputs[1], i32);
-        let c = parse_input!(inputs[2], i32);
-        let d = parse_input!(inputs[3], i32);
-        let e = parse_input!(inputs[4], i32);
-        projects.push(Molecules {a,b,c,d,e});
+impl Module {
+    fn from_str(s: &str) -> Result<Self, &'static str> {
+        match s {
+            "SAMPLES" => Ok(Module::Sample),
+            "DIAGNOSIS" => Ok(Module::Diagnosis),
+            "MOLECULES" => Ok(Module::Molecule),
+            "LABORATORY" => Ok(Module::Laboratory),
+            "START_POS" => Ok(Module::Spawn),
+            _ => Err("Invalid module name"),
+        }
     }
-
-    projects
 }
 
 fn main() {
-    let mut my_robot = Robot::new();
-    let mut enemy_robot = Robot::new();
-
-    let projects = parse_initial_input();
+    let mut state_machine = Memory::new();
     loop {
-        TurnInput::new(); // TODO: add turn parser
-        println!("Hello, world!");
+        state_machine.process_turn_input();
+        eprintln!("{:?}", state_machine);
+        println!("{}", "WAIT");
     }
 }
 
