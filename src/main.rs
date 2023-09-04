@@ -12,6 +12,12 @@
  * molecule types = A,B,C,D,E
  */
 use std::ops::{Add, Sub};
+use std::io;
+use std::str::FromStr;
+
+macro_rules! parse_input {
+    ($x:expr, $t:ty) => ($x.trim().parse::<$t>().unwrap());
+}
 
 enum Module {
     Sample,
@@ -59,7 +65,7 @@ const SAMPLE_INVENTORY_SPACE: u8 = 3;
 const MOLECULE_INVENTORY_SPACE: u8 = 10;
 const ILLEGAL_VALUE: i8 = -1;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct Molecules {
     a: i32,
     b: i32,
@@ -106,16 +112,6 @@ impl Molecules {
             d: 0,
             e: 0,
         }
-    }
-
-    pub fn set(values: (i32, i32, i32, i32, i32)) -> Self {
-		Self {
-			a: values.0,
-			b: values.1,
-			c: values.2,
-			d: values.3,
-			e: values.4
-		}
     }
 
 	pub fn count(&self) -> i32 {
@@ -174,7 +170,28 @@ impl Sub for Molecules {
     }
 }
 
+fn parse_initial_input() -> Vec<Molecules> {
+    let mut input_line = String::new();
+    io::stdin().read_line(&mut input_line).unwrap();
+    let project_count = parse_input!(input_line, i32);
+    
+    let mut projects = Vec::new();
+    for _ in 0..project_count {
+        io::stdin().read_line(&mut input_line).unwrap();
+        let inputs = input_line.split_whitespace().collect::<Vec<_>>();
+        let a = parse_input!(inputs[0], i32);
+        let b = parse_input!(inputs[1], i32);
+        let c = parse_input!(inputs[2], i32);
+        let d = parse_input!(inputs[3], i32);
+        let e = parse_input!(inputs[4], i32);
+        projects.push(Molecules {a,b,c,d,e});
+    }
+
+    projects
+}
+
 fn main() {
+    let projects = parse_initial_input();
     println!("Hello, world!");
 }
 
@@ -184,7 +201,7 @@ mod tests {
 
     #[test]
     fn sets_negative() {
-        let negative = Molecules::set((-1,-1,-1,-1,-1));
+        let negative = Molecules{a:-1,b:-1,c:-1,d:-1,e:-1};
         assert_eq!(-5, negative.count());
     }
 
@@ -196,8 +213,8 @@ mod tests {
 
     #[test]
     fn addition_works() {
-        let a = Molecules::set((1,2,3,4,5));
-        let b = Molecules::set((4,3,2,1,0));
+        let a = Molecules{a:1,b:2,c:3,d:4,e:5};
+        let b = Molecules{a:4,b:3,c:2,d:1,e:0};
         let c = a.clone() + b;
         assert_eq!(15, a.count());
         assert!(!a.is_not_positive());
@@ -206,15 +223,15 @@ mod tests {
 
     #[test]
     fn lists_missing() {
-        let negative = Molecules::set((-1,-1,-3,-1,-1));
-        assert_eq!(-7, negative.count());
-        assert_eq!("ABCCCDE", negative.list_missing());
+        let negative = Molecules{a:3,b:-1,c:-3,d:-1,e:-1};
+        assert_eq!(-3, negative.count());
+        assert_eq!("BCCCDE", negative.list_missing());
     }
 
     #[test]
     fn not_positive() {
-        let semi_positive = Molecules::set((4,2,-6,0,0));
-        let non_positive = Molecules::set((0,0,-2,0,0));
+        let semi_positive = Molecules{a:1,b:2,c:-6,d:0,e:0};
+        let non_positive = Molecules{a:0,b:0,c:-2,d:0,e:0};
         assert!(!semi_positive.is_not_positive());
         assert!(non_positive.is_not_positive());
     }
