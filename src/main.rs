@@ -59,12 +59,42 @@ const SAMPLE_INVENTORY_SPACE: u8 = 3;
 const MOLECULE_INVENTORY_SPACE: u8 = 10;
 const ILLEGAL_VALUE: i8 = -1;
 
+#[derive(Clone)]
 struct Molecules {
     a: i32,
     b: i32,
     c: i32,
     d: i32,
     e: i32,
+}
+
+struct Samples {
+    id: u8,
+    carried_by: CarriedBy,
+    rank: SampleRank,
+    health: u8,
+    cost: Molecules
+}
+
+struct TurnInput {
+    target: String,
+    eta: u8,
+    score: i32,
+    storage: Molecules,
+    expertise: Molecules,
+    available: Molecules,
+    samples: Samples
+}
+
+impl TurnInput {
+    /* pub fn new() -> Self {
+        
+    } */
+}
+
+struct Robot {
+    latest_input: TurnInput,
+    projects: Vec<Molecules>
 }
 
 impl Molecules {
@@ -93,11 +123,23 @@ impl Molecules {
     }
 
 	pub fn list_missing(&self) -> String {
-        "A".repeat(0-self.a as usize) +
-		&"B".repeat(0-self.b as usize) +
-		&"C".repeat(0-self.c as usize) +
-		&"D".repeat(0-self.d as usize) +
-		&"E".repeat(0-self.e as usize)
+        let mut missing = String::new();
+        if self.a < 0 {
+            missing += &"A".repeat(-self.a as usize);
+        }
+        if self.b < 0 {
+            missing += &"B".repeat(-self.b as usize);
+        }
+        if self.c < 0 {
+            missing += &"C".repeat(-self.c as usize);
+        }
+        if self.d < 0 {
+            missing += &"D".repeat(-self.d as usize);
+        }
+        if self.e < 0 {
+            missing += &"E".repeat(-self.e as usize);
+        }
+        missing
     }
 
     pub fn is_not_positive(&self) -> bool {
@@ -156,9 +198,24 @@ mod tests {
     fn addition_works() {
         let a = Molecules::set((1,2,3,4,5));
         let b = Molecules::set((4,3,2,1,0));
-        let c = a + b;
-        // assert_eq!(15, a.count());
-        // assert_eq!(10, b.count());
+        let c = a.clone() + b;
+        assert_eq!(15, a.count());
+        assert!(!a.is_not_positive());
         assert_eq!(25, c.count());
+    }
+
+    #[test]
+    fn lists_missing() {
+        let negative = Molecules::set((-1,-1,-3,-1,-1));
+        assert_eq!(-7, negative.count());
+        assert_eq!("ABCCCDE", negative.list_missing());
+    }
+
+    #[test]
+    fn not_positive() {
+        let semi_positive = Molecules::set((4,2,-6,0,0));
+        let non_positive = Molecules::set((0,0,-2,0,0));
+        assert!(!semi_positive.is_not_positive());
+        assert!(non_positive.is_not_positive());
     }
 }
