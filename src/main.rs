@@ -89,6 +89,7 @@ struct Sample {
    rank: SampleRank,
    health: u8,
    cost: Molecules,
+   expertise_gain: Molecules
 }
 
 #[derive(Debug)]
@@ -107,6 +108,28 @@ struct Robot {
    score: i32,
    storage: Molecules,
    expertise: Molecules,
+}
+
+impl CarriedBy {
+   fn from_integer(value: i32) -> Option<Self> {
+      match value {
+         0 => Some(CarriedBy::Me),
+         1 => Some(CarriedBy::Other),
+         -1 => Some(CarriedBy::Cloud),
+         _ => None
+      }
+   }
+}
+
+impl SampleRank {
+   fn from_integer(value: i32) -> Option<Self> {
+      match value {
+         3 => Some(SampleRank::LotsOfHealth),
+         2 => Some(SampleRank::SomeHealth),
+         1 => Some(SampleRank::LittleHealth),
+         _ => None
+      }
+   }
 }
 
 impl Molecules {
@@ -161,6 +184,19 @@ impl Molecules {
    pub fn is_not_positive(&self) -> bool {
       self.a <= 0 && self.b <= 0 && self.c <= 0 && self.d <= 0 && self.e <= 0
    }
+
+   pub fn from_letter(letter: char) -> Self {
+      let mut molecules = Molecules::new();
+      match letter {
+         'a' => molecules.a = 1,
+         'b' => molecules.b = 1,
+         'c' => molecules.c = 1,
+         'd' => molecules.d = 1,
+         'e' => molecules.e = 1,
+         _ => {}
+      }
+      molecules
+   }
 }
 
 impl Robot {
@@ -191,6 +227,7 @@ impl Sample {
          rank: SampleRank::LittleHealth,
          health: 0,
          cost: Molecules::new(),
+         expertise_gain: Molecules::new()
       }
    }
 }
@@ -224,6 +261,7 @@ impl Memory {
       io::stdin().read_line(&mut input_line).unwrap();
       self.my_robot
          .set_from_inputs(input_line.split_whitespace().collect::<Vec<_>>());
+
       input_line.clear();
       io::stdin().read_line(&mut input_line).unwrap();
       self.enemy_robot
@@ -233,7 +271,34 @@ impl Memory {
       io::stdin().read_line(&mut input_line).unwrap();
       let inputs = input_line.split_whitespace().collect::<Vec<_>>();
       self.available = Molecules::from_slice(&inputs[0..5]);
-      // TODO: read lines about samples
+
+      input_line.clear();
+      io::stdin().read_line(&mut input_line).unwrap();
+      let sample_count = parse_input!(input_line, i32);
+      let mut samples: Vec<Sample> = Vec::new();
+      for _ in 0..sample_count {
+         input_line.clear();
+         io::stdin().read_line(&mut input_line).unwrap();
+         let inputs = input_line.split_whitespace().collect::<Vec<_>>();
+         
+         let sample_id = parse_input!(inputs[0], u8);
+         let carried_by = CarriedBy::from_integer(parse_input!(inputs[1], i32)).unwrap();
+         let rank = SampleRank::from_integer(parse_input!(inputs[2], i32)).unwrap();
+         let expertise_gain: Molecules = Molecules::from_letter(inputs[3].chars().next().unwrap());
+         let health = parse_input!(inputs[4], u8);
+         let cost = Molecules::from_slice(&inputs[5..10]);
+         
+         let sample = Sample {
+            id: sample_id,
+            carried_by,
+            rank,
+            health,
+            cost,
+            expertise_gain
+         };
+         eprintln!("{:?}", sample);
+         samples.push(sample);
+      }
    }
 }
 
