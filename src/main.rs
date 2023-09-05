@@ -178,8 +178,8 @@ impl Robot {
       self.target = Module::from_str(inputs[0].trim()).unwrap();
       self.eta = parse_input!(inputs[1], u8);
       self.score = parse_input!(inputs[2], i32);
-      self.storage = Molecules::from_slice(&inputs[3..7]);
-      self.expertise = Molecules::from_slice(&inputs[8..12]);
+      self.storage = Molecules::from_slice(&inputs[3..8]);
+      self.expertise = Molecules::from_slice(&inputs[8..13]);
    }
 }
 
@@ -215,7 +215,7 @@ impl Memory {
       for _ in 0..project_count {
          io::stdin().read_line(&mut input_line).unwrap();
          let inputs = input_line.split_whitespace().collect::<Vec<_>>();
-         self.projects.push(Molecules::from_slice(&inputs[0..4]));
+         self.projects.push(Molecules::from_slice(&inputs[0..5]));
       }
    }
 
@@ -224,13 +224,15 @@ impl Memory {
       io::stdin().read_line(&mut input_line).unwrap();
       self.my_robot
          .set_from_inputs(input_line.split_whitespace().collect::<Vec<_>>());
+      let mut input_line = String::new();
       io::stdin().read_line(&mut input_line).unwrap();
       self.enemy_robot
          .set_from_inputs(input_line.split_whitespace().collect::<Vec<_>>());
 
+      let mut input_line = String::new();
       io::stdin().read_line(&mut input_line).unwrap();
       let inputs = input_line.split_whitespace().collect::<Vec<_>>();
-      self.available = Molecules::from_slice(&inputs[0..4]);
+      self.available = Molecules::from_slice(&inputs[0..5]);
    }
 }
 
@@ -275,6 +277,7 @@ impl Module {
 
 fn main() {
    let mut state_machine = Memory::new();
+   state_machine.parse_initial_input();
    loop {
       state_machine.process_turn_input();
       eprintln!("{:?}", state_machine);
