@@ -13,6 +13,7 @@
  */
 use std::ops::{Add, Sub};
 use std::io;
+use std::fmt;
 
 macro_rules! parse_input {
    ($x:expr, $t:ty) => {
@@ -21,6 +22,14 @@ macro_rules! parse_input {
 }
 
 #[derive(Debug)]
+enum GameGoals {
+   TakeSamples,
+   ResearchSamples,
+   GatherMolecules,
+   ProduceMedicine
+}
+
+#[derive(Debug, PartialEq)]
 enum Module {
    Sample,
    Diagnosis,
@@ -29,7 +38,7 @@ enum Module {
    Spawn,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Clone)]
 enum CarriedBy {
    Me = 0,
    Other = 1,
@@ -48,7 +57,7 @@ enum RoboState {
    CompletingProject,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum SampleRank {
    LotsOfHealth = 3,
    SomeHealth = 2,
@@ -57,16 +66,21 @@ enum SampleRank {
 
 #[derive(Debug)]
 enum ConnectOptions {
-   SampleId,
+   SampleId(u8),
    SampleRank(SampleRank),
-   MoleculeType,
+   MoleculeType(Molecule),
 }
 
 #[derive(Debug)]
-enum Commands {
+enum Command {
    Goto(Module),
    Connect(ConnectOptions),
    Wait,
+}
+
+#[derive(Debug)]
+enum Molecule {
+   A,B,C,D,E
 }
 
 const SAMPLE_INVENTORY_SPACE: u8 = 3;
@@ -81,7 +95,7 @@ struct Molecules {
    e: i8,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Sample {
    id: u8,
    carried_by: CarriedBy,
@@ -91,7 +105,7 @@ struct Sample {
    expertise_gain: Molecules
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum SampleHealth {
    Unresearched,
    Researched(u8)
@@ -99,6 +113,7 @@ enum SampleHealth {
 
 #[derive(Debug)]
 struct Memory {
+   goal: GameGoals,
    projects: Vec<Molecules>,
    my_robot: Robot,
    enemy_robot: Robot,
@@ -108,11 +123,66 @@ struct Memory {
 
 #[derive(Debug)]
 struct Robot {
-   target: Module,
+   location: Module,
    eta: u8,
    score: i16,
    storage: Molecules,
    expertise: Molecules,
+   held_samples: Vec<Sample>
+}
+
+impl Molecule {
+   fn as_char(&self) -> char {
+      match self {
+         Molecule::A => 'A',
+         Molecule::B => 'B',
+         Molecule::C => 'C',
+         Molecule::D => 'D',
+         Molecule::E => 'E',
+      }
+   }
+}
+
+impl SampleRank {
+   fn as_value(&self) -> u8 {
+       match self {
+           SampleRank::LotsOfHealth => 3,
+           SampleRank::SomeHealth => 2,
+           SampleRank::LittleHealth => 1,
+       }
+   }
+}
+
+impl fmt::Display for Module {
+   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+      match self {
+         Module::Spawn => write!(f, "START_POS"),
+         Module::Sample => write!(f, "SAMPLES"),
+         Module::Diagnosis => write!(f, "DIAGNOSIS"),
+         Module::Molecule => write!(f, "MOLECULES"),
+         Module::Laboratory => write!(f, "LABORATORY"),
+      }
+   }
+}
+
+impl fmt::Display for ConnectOptions {
+   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+      match self {
+         ConnectOptions::SampleRank(rank) => write!(f, "{}", rank.as_value()),
+         ConnectOptions::MoleculeType(moleculeType) => write!(f, "{}", moleculeType.as_char()),
+         ConnectOptions::SampleId(id) => write!(f, "{}", id),
+      }
+   }
+}
+
+impl fmt::Display for Command {
+   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+      match self {
+         Command::Goto(module) => write!(f, "GOTO {}", module),
+         Command::Connect(options) => write!(f, "CONNECT {}", options),
+         _ => write!(f, "WAIT"),
+      }
+   }
 }
 
 impl CarriedBy {
@@ -217,16 +287,17 @@ impl Molecules {
 impl Robot {
    pub fn new() -> Self {
       Self {
-         target: Module::Spawn,
+         location: Module::Spawn,
          eta: 0,
          score: 0,
          storage: Molecules::new(),
          expertise: Molecules::new(),
+         held_samples: Vec::new()
       }
    }
 
    fn set_from_inputs(&mut self, inputs: Vec<&str>) {
-      self.target = Module::from_str(inputs[0].trim()).unwrap();
+      self.location = Module::from_str(inputs[0].trim()).unwrap();
       self.eta = parse_input!(inputs[1], u8);
       self.score = parse_input!(inputs[2], i16);
       self.storage = Molecules::from_slice(&inputs[3..8]);
@@ -250,6 +321,7 @@ impl Sample {
 impl Memory {
    pub fn new() -> Self {
       Self {
+         goal: GameGoals::TakeSamples,
          projects: Vec::new(),
          my_robot: Robot::new(),
          enemy_robot: Robot::new(),
@@ -271,7 +343,7 @@ impl Memory {
       }
    }
 
-   pub fn process_turn_input(&mut self) {
+   pub fn parse_turn_input(&mut self) {
       let mut input_line = String::new();
       io::stdin().read_line(&mut input_line).unwrap();
       self.my_robot
@@ -291,6 +363,7 @@ impl Memory {
       io::stdin().read_line(&mut input_line).unwrap();
       let sample_count = parse_input!(input_line, u16);
       let mut samples: Vec<Sample> = Vec::new();
+      self.my_robot.held_samples = Vec::new();
       for _ in 0..sample_count {
          input_line.clear();
          io::stdin().read_line(&mut input_line).unwrap();
@@ -311,9 +384,48 @@ impl Memory {
             cost,
             expertise_gain
          };
+         if sample.carried_by == CarriedBy::Me {
+            // TODO: match held_by and save to either robot or the cloud
+            self.my_robot.held_samples.push(sample.clone());
+         }
          eprintln!("{:?}", sample);
          samples.push(sample);
       }
+   }
+
+   pub fn process_turn(&mut self) -> Command {
+      if self.my_robot.eta > 0 {
+         return Command::Wait;
+      }
+      match self.goal {
+         GameGoals::TakeSamples => {
+            return self.take_samples();
+         }
+         GameGoals::ResearchSamples => {
+            return self.research_samples();
+         }
+         _ => {
+            return Command::Wait;
+         }
+      }
+   }
+
+   fn take_samples(&mut self) -> Command {
+      if self.my_robot.held_samples.len() >= 3 {
+         self.goal = GameGoals::ResearchSamples;
+         return self.process_turn();
+      }
+      if self.my_robot.location != Module::Sample {
+         return Command::Goto(Module::Sample)
+      }
+      return Command::Connect(ConnectOptions::SampleRank(SampleRank::LittleHealth));
+   }
+
+   fn research_samples(&self) -> Command {
+      if self.my_robot.location != Module::Diagnosis {
+         return Command::Goto(Module::Diagnosis);
+      }
+      return Command::Wait
    }
 }
 
@@ -360,9 +472,9 @@ fn main() {
    let mut state_machine = Memory::new();
    state_machine.parse_initial_input();
    loop {
-      state_machine.process_turn_input();
+      state_machine.parse_turn_input();
       eprintln!("{:?}", state_machine);
-      println!("{}", "WAIT");
+      println!("{}", state_machine.process_turn());
    }
 }
 
