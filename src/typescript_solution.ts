@@ -4,9 +4,10 @@
  **/
 
 /**
- * 1. Collect sample data at the DIAGNOSIS module
- * 2. Gather required molecules for the medicines at the MOLECULES module
- * 3. Produce the medicines at the LABORATORY modue
+ * 1. Collect sample data at the SAMPLES module
+ * 2. Analyze them at the DIAGNOSIS module
+ * 3. Gather required molecules for the medicines at the MOLECULES module
+ * 4. Produce the medicines at the LABORATORY modue
  * 
  * can carry up to 3 sample data files and 10 molecules
  * molecule types = A,B,C,D,E
