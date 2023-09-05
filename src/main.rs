@@ -71,15 +71,14 @@ enum Commands {
 
 const SAMPLE_INVENTORY_SPACE: u8 = 3;
 const MOLECULE_INVENTORY_SPACE: u8 = 10;
-const ILLEGAL_VALUE: i8 = -1;
 
 #[derive(Clone, Debug)]
 struct Molecules {
-   a: i32,
-   b: i32,
-   c: i32,
-   d: i32,
-   e: i32,
+   a: i8,
+   b: i8,
+   c: i8,
+   d: i8,
+   e: i8,
 }
 
 #[derive(Debug)]
@@ -87,9 +86,15 @@ struct Sample {
    id: u8,
    carried_by: CarriedBy,
    rank: SampleRank,
-   health: u8,
+   health: SampleHealth,
    cost: Molecules,
    expertise_gain: Molecules
+}
+
+#[derive(Debug)]
+enum SampleHealth {
+   Unresearched,
+   Researched(u8)
 }
 
 #[derive(Debug)]
@@ -105,13 +110,13 @@ struct Memory {
 struct Robot {
    target: Module,
    eta: u8,
-   score: i32,
+   score: i16,
    storage: Molecules,
    expertise: Molecules,
 }
 
 impl CarriedBy {
-   fn from_integer(value: i32) -> Option<Self> {
+   fn from_integer(value: i8) -> Option<Self> {
       match value {
          0 => Some(CarriedBy::Me),
          1 => Some(CarriedBy::Other),
@@ -122,12 +127,22 @@ impl CarriedBy {
 }
 
 impl SampleRank {
-   fn from_integer(value: i32) -> Option<Self> {
+   fn from_integer(value: i8) -> Option<Self> {
       match value {
          3 => Some(SampleRank::LotsOfHealth),
          2 => Some(SampleRank::SomeHealth),
          1 => Some(SampleRank::LittleHealth),
          _ => None
+      }
+   }
+}
+
+impl SampleHealth {
+   fn from_integer(number: i8) -> Self {
+      if number < 0 {
+         SampleHealth::Unresearched
+      } else {
+         SampleHealth::Researched(number as u8)
       }
    }
 }
@@ -146,18 +161,18 @@ impl Molecules {
    pub fn from_slice(slice: &[&str]) -> Self {
       if slice.len() >= 5 {
          Self {
-            a: parse_input!(slice[0], i32),
-            b: parse_input!(slice[1], i32),
-            c: parse_input!(slice[2], i32),
-            d: parse_input!(slice[3], i32),
-            e: parse_input!(slice[4], i32),
+            a: parse_input!(slice[0], i8),
+            b: parse_input!(slice[1], i8),
+            c: parse_input!(slice[2], i8),
+            d: parse_input!(slice[3], i8),
+            e: parse_input!(slice[4], i8),
          }
       } else {
          panic!("Tried reading molecule from a short slice");
       }
    }
 
-   pub fn count(&self) -> i32 {
+   pub fn count(&self) -> i8 {
       self.a + self.b + self.c + self.d + self.e
    }
 
@@ -188,11 +203,11 @@ impl Molecules {
    pub fn from_letter(letter: char) -> Self {
       let mut molecules = Molecules::new();
       match letter {
-         'a' => molecules.a = 1,
-         'b' => molecules.b = 1,
-         'c' => molecules.c = 1,
-         'd' => molecules.d = 1,
-         'e' => molecules.e = 1,
+         'A' => molecules.a = 1,
+         'B' => molecules.b = 1,
+         'C' => molecules.c = 1,
+         'D' => molecules.d = 1,
+         'E' => molecules.e = 1,
          _ => {}
       }
       molecules
@@ -213,7 +228,7 @@ impl Robot {
    fn set_from_inputs(&mut self, inputs: Vec<&str>) {
       self.target = Module::from_str(inputs[0].trim()).unwrap();
       self.eta = parse_input!(inputs[1], u8);
-      self.score = parse_input!(inputs[2], i32);
+      self.score = parse_input!(inputs[2], i16);
       self.storage = Molecules::from_slice(&inputs[3..8]);
       self.expertise = Molecules::from_slice(&inputs[8..13]);
    }
@@ -225,7 +240,7 @@ impl Sample {
          id: 0,
          carried_by: CarriedBy::Other,
          rank: SampleRank::LittleHealth,
-         health: 0,
+         health: SampleHealth::Unresearched,
          cost: Molecules::new(),
          expertise_gain: Molecules::new()
       }
@@ -246,7 +261,7 @@ impl Memory {
    pub fn parse_initial_input(&mut self) {
       let mut input_line = String::new();
       io::stdin().read_line(&mut input_line).unwrap();
-      let project_count = parse_input!(input_line, i32);
+      let project_count = parse_input!(input_line, u8);
 
       self.projects = Vec::new();
       for _ in 0..project_count {
@@ -274,7 +289,7 @@ impl Memory {
 
       input_line.clear();
       io::stdin().read_line(&mut input_line).unwrap();
-      let sample_count = parse_input!(input_line, i32);
+      let sample_count = parse_input!(input_line, u16);
       let mut samples: Vec<Sample> = Vec::new();
       for _ in 0..sample_count {
          input_line.clear();
@@ -282,10 +297,10 @@ impl Memory {
          let inputs = input_line.split_whitespace().collect::<Vec<_>>();
          
          let sample_id = parse_input!(inputs[0], u8);
-         let carried_by = CarriedBy::from_integer(parse_input!(inputs[1], i32)).unwrap();
-         let rank = SampleRank::from_integer(parse_input!(inputs[2], i32)).unwrap();
+         let carried_by = CarriedBy::from_integer(parse_input!(inputs[1], i8)).unwrap();
+         let rank = SampleRank::from_integer(parse_input!(inputs[2], i8)).unwrap();
          let expertise_gain: Molecules = Molecules::from_letter(inputs[3].chars().next().unwrap());
-         let health = parse_input!(inputs[4], u8);
+         let health = SampleHealth::from_integer(parse_input!(inputs[4], i8));
          let cost = Molecules::from_slice(&inputs[5..10]);
          
          let sample = Sample {
