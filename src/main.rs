@@ -224,15 +224,16 @@ impl Memory {
       io::stdin().read_line(&mut input_line).unwrap();
       self.my_robot
          .set_from_inputs(input_line.split_whitespace().collect::<Vec<_>>());
-      let mut input_line = String::new();
+      input_line.clear();
       io::stdin().read_line(&mut input_line).unwrap();
       self.enemy_robot
          .set_from_inputs(input_line.split_whitespace().collect::<Vec<_>>());
 
-      let mut input_line = String::new();
+      input_line.clear();
       io::stdin().read_line(&mut input_line).unwrap();
       let inputs = input_line.split_whitespace().collect::<Vec<_>>();
       self.available = Molecules::from_slice(&inputs[0..5]);
+      // TODO: read lines about samples
    }
 }
 
