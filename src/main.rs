@@ -4,10 +4,11 @@
  **/
 
 /**
- * 1. Collect sample data at the DIAGNOSIS module
- * 2. Gather required molecules for the medicines at the MOLECULES module
- * 3. Produce the medicines at the LABORATORY modue
- *
+ * 1. Collect sample data at the SAMPLES module
+ * 2. Analyze them at the DIAGNOSIS module
+ * 3. Gather required molecules for the medicines at the MOLECULES module
+ * 4. Produce the medicines at the LABORATORY modue
+ * 
  * can carry up to 3 sample data files and 10 molecules
  * molecule types = A,B,C,D,E
  */
@@ -311,6 +312,27 @@ impl Robot {
    fn has_maximum_molecules(&self) -> bool {
       return self.storage.len() == Self::MOLECULE_INVENTORY_SPACE;
    }
+
+   fn pick_best_molecule(&self, available: &Molecules) -> Molecule {
+      // TODO: write logic for picking the best molecules
+      // fulfill as many samples as possible
+      let mut sorted_samples: Vec<(u8, i8)> = self.held_samples.iter()
+         .map(|sample| {
+            let health = match sample.health {
+               SampleHealth::Researched(health) => -(health as i8),
+               _ => 0i8
+            };
+            (sample.id, health)
+         }).collect();
+      sorted_samples.sort_by_key(|&(_, health)| health);
+      // go through every sample
+      // calculate molecules needed to fulfill the sample
+      // check if possible to gather
+      // calculate missing
+      // check if missing are available
+      // iterate through missing molecules and return the first available
+      todo!();
+   }
 }
 
 impl Sample {
@@ -464,9 +486,7 @@ impl Memory {
       if self.my_robot.location != Module::Molecule {
          return Command::Goto(Module::Molecule);
       }
-      // TODO: write logic for picking the best molecules
-      // fulfill as many projects as possible
-      return Command::Connect(ConnectOptions::SampleId(sample.id));
+      return Command::Connect(ConnectOptions::MoleculeType(self.my_robot.pick_best_molecule(&self.available)));
    }
 }
 
