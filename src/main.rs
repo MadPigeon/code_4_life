@@ -46,18 +46,6 @@ enum CarriedBy {
 }
 
 #[derive(Debug)]
-enum RoboState {
-   SampleModule,
-   DiagnosisModule,
-   MoleculeModule,
-   LaboratoryModule,
-   Spawn,
-   Idle,
-   Moving,
-   CompletingProject,
-}
-
-#[derive(Debug)]
 enum SampleRank {
    LotsOfHealth = 3,
    SomeHealth = 2,
@@ -82,9 +70,6 @@ enum Command {
 enum Molecule {
    A,B,C,D,E
 }
-
-const SAMPLE_INVENTORY_SPACE: u8 = 3;
-const MOLECULE_INVENTORY_SPACE: u8 = 10;
 
 #[derive(Clone, Debug)]
 struct Molecules {
@@ -241,7 +226,7 @@ impl Molecules {
       }
    }
 
-   pub fn count(&self) -> i8 {
+   pub fn len(&self) -> i8 {
       self.a + self.b + self.c + self.d + self.e
    }
 
@@ -295,6 +280,8 @@ impl Robot {
       }
    }
 
+   const SAMPLE_INVENTORY_SPACE: usize = 3;
+   const MOLECULE_INVENTORY_SPACE: i8 = 10;
    fn set_from_inputs(&mut self, inputs: Vec<&str>) {
       self.location = Module::from_str(inputs[0].trim()).unwrap();
       self.eta = parse_input!(inputs[1], u8);
@@ -315,6 +302,14 @@ impl Robot {
          } else {
             None
          }
+   }
+
+   fn has_maximum_samples(&self) -> bool {
+      return self.held_samples.len() >= Self::SAMPLE_INVENTORY_SPACE
+   }
+
+   fn has_maximum_molecules(&self) -> bool {
+      return self.storage.len() == Self::MOLECULE_INVENTORY_SPACE;
    }
 }
 
@@ -424,7 +419,7 @@ impl Memory {
             return self.research_samples();
          },
          GameGoals::GatherMolecules => {
-            return Command::Goto(Module::Molecule);
+            return self.gather_molecules();
          }
          _ => {
             return Command::Wait;
@@ -433,7 +428,7 @@ impl Memory {
    }
 
    fn take_samples(&mut self) -> Command {
-      if self.my_robot.held_samples.len() >= 3 {
+      if self.my_robot.has_maximum_samples() {
          self.goal = GameGoals::ResearchSamples;
          return self.process_turn();
       }
@@ -457,6 +452,20 @@ impl Memory {
       if self.my_robot.location != Module::Diagnosis {
          return Command::Goto(Module::Diagnosis);
       }
+      return Command::Connect(ConnectOptions::SampleId(sample.id));
+   }
+
+   fn gather_molecules(&mut self) -> Command {
+      // TODO: safeguard against full molecules with no finisheable projects
+      if self.my_robot.has_maximum_molecules() {
+         self.goal = GameGoals::ProduceMedicine;
+         return self.process_turn();
+      }
+      if self.my_robot.location != Module::Molecule {
+         return Command::Goto(Module::Molecule);
+      }
+      // TODO: write logic for picking the best molecules
+      // fulfill as many projects as possible
       return Command::Connect(ConnectOptions::SampleId(sample.id));
    }
 }
@@ -523,13 +532,13 @@ mod tests {
          d: -1,
          e: -1,
       };
-      assert_eq!(-5, negative.count());
+      assert_eq!(-5, negative.len());
    }
 
    #[test]
    fn new_is_empty() {
       let empty = Molecules::new();
-      assert_eq!(0, empty.count());
+      assert_eq!(0, empty.len());
    }
 
    #[test]
@@ -549,9 +558,9 @@ mod tests {
          e: 0,
       };
       let c = a.clone() + b;
-      assert_eq!(15, a.count());
+      assert_eq!(15, a.len());
       assert!(!a.is_not_positive());
-      assert_eq!(25, c.count());
+      assert_eq!(25, c.len());
    }
 
    #[test]
@@ -563,7 +572,7 @@ mod tests {
          d: -1,
          e: -1,
       };
-      assert_eq!(-3, negative.count());
+      assert_eq!(-3, negative.len());
       assert_eq!("BCCCDE", negative.list_missing());
    }
 
