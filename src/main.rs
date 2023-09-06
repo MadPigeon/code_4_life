@@ -38,7 +38,7 @@ enum Module {
    Spawn,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq)]
 enum CarriedBy {
    Me = 0,
    Other = 1,
@@ -57,7 +57,7 @@ enum RoboState {
    CompletingProject,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 enum SampleRank {
    LotsOfHealth = 3,
    SomeHealth = 2,
@@ -95,17 +95,16 @@ struct Molecules {
    e: i8,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct Sample {
    id: u8,
-   carried_by: CarriedBy,
    rank: SampleRank,
    health: SampleHealth,
    cost: Molecules,
    expertise_gain: Molecules
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 enum SampleHealth {
    Unresearched,
    Researched(u8)
@@ -118,7 +117,7 @@ struct Memory {
    my_robot: Robot,
    enemy_robot: Robot,
    available: Molecules,
-   samples: Vec<Sample>,
+   cloud: Vec<Sample>,
 }
 
 #[derive(Debug)]
@@ -303,13 +302,26 @@ impl Robot {
       self.storage = Molecules::from_slice(&inputs[3..8]);
       self.expertise = Molecules::from_slice(&inputs[8..13]);
    }
+
+   fn get_unresearched_sample(&self) -> Option<&Sample> {
+      let filtered_values = self.held_samples.iter()
+         .filter(|sample| match sample.health {
+            SampleHealth::Unresearched => true,
+            _ => false
+         }).collect::<Vec<_>>();
+
+         if filtered_values.len() > 0 {
+            Some(filtered_values[0])
+         } else {
+            None
+         }
+   }
 }
 
 impl Sample {
    pub fn new() -> Self {
       Self {
          id: 0,
-         carried_by: CarriedBy::Other,
          rank: SampleRank::LittleHealth,
          health: SampleHealth::Unresearched,
          cost: Molecules::new(),
@@ -326,7 +338,7 @@ impl Memory {
          my_robot: Robot::new(),
          enemy_robot: Robot::new(),
          available: Molecules::new(),
-         samples: Vec::new(),
+         cloud: Vec::new(),
       }
    }
 
@@ -359,11 +371,13 @@ impl Memory {
       let inputs = input_line.split_whitespace().collect::<Vec<_>>();
       self.available = Molecules::from_slice(&inputs[0..5]);
 
+      self.cloud = Vec::new();
+      self.my_robot.held_samples = Vec::new();
+      self.enemy_robot.held_samples = Vec::new();
+      
       input_line.clear();
       io::stdin().read_line(&mut input_line).unwrap();
       let sample_count = parse_input!(input_line, u16);
-      let mut samples: Vec<Sample> = Vec::new();
-      self.my_robot.held_samples = Vec::new();
       for _ in 0..sample_count {
          input_line.clear();
          io::stdin().read_line(&mut input_line).unwrap();
@@ -378,18 +392,23 @@ impl Memory {
          
          let sample = Sample {
             id: sample_id,
-            carried_by,
             rank,
             health,
             cost,
             expertise_gain
          };
-         if sample.carried_by == CarriedBy::Me {
-            // TODO: match held_by and save to either robot or the cloud
-            self.my_robot.held_samples.push(sample.clone());
-         }
          eprintln!("{:?}", sample);
-         samples.push(sample);
+         match carried_by {
+            CarriedBy::Me => {
+               self.my_robot.held_samples.push(sample);
+            },
+            CarriedBy::Other => {
+               self.enemy_robot.held_samples.push(sample)
+            },
+            CarriedBy::Cloud => {
+               self.cloud.push(sample)
+            }
+         }
       }
    }
 
@@ -400,13 +419,16 @@ impl Memory {
       match self.goal {
          GameGoals::TakeSamples => {
             return self.take_samples();
-         }
+         },
          GameGoals::ResearchSamples => {
             return self.research_samples();
+         },
+         GameGoals::GatherMolecules => {
+            return Command::Goto(Module::Molecule);
          }
          _ => {
             return Command::Wait;
-         }
+         },
       }
    }
 
@@ -421,11 +443,21 @@ impl Memory {
       return Command::Connect(ConnectOptions::SampleRank(SampleRank::LittleHealth));
    }
 
-   fn research_samples(&self) -> Command {
+   fn research_samples(&mut self) -> Command {
+      let sample: &Sample;
+      match self.my_robot.get_unresearched_sample() {
+         None => {
+            self.goal = GameGoals::GatherMolecules;
+            return self.process_turn();
+         }
+         Some(found_sample) => {
+            sample = found_sample;
+         }
+      }
       if self.my_robot.location != Module::Diagnosis {
          return Command::Goto(Module::Diagnosis);
       }
-      return Command::Wait
+      return Command::Connect(ConnectOptions::SampleId(sample.id));
    }
 }
 
