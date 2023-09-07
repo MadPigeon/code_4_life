@@ -69,7 +69,7 @@ enum Command {
 
 #[derive(Debug)]
 enum Molecule {
-   A,B,C,D,E
+   A,B,C,D,E, None
 }
 
 #[derive(Clone, Debug)]
@@ -124,6 +124,7 @@ impl Molecule {
          Molecule::C => 'C',
          Molecule::D => 'D',
          Molecule::E => 'E',
+         Molecule::None => '~',
       }
    }
 }
@@ -154,7 +155,7 @@ impl fmt::Display for ConnectOptions {
    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
       match self {
          ConnectOptions::SampleRank(rank) => write!(f, "{}", rank.as_value()),
-         ConnectOptions::MoleculeType(moleculeType) => write!(f, "{}", moleculeType.as_char()),
+         ConnectOptions::MoleculeType(molecule_type) => write!(f, "{}", molecule_type.as_char()),
          ConnectOptions::SampleId(id) => write!(f, "{}", id),
       }
    }
@@ -231,26 +232,6 @@ impl Molecules {
       self.a + self.b + self.c + self.d + self.e
    }
 
-   pub fn list_missing(&self) -> String {
-      let mut missing = String::new();
-      if self.a < 0 {
-         missing += &"A".repeat(-self.a as usize);
-      }
-      if self.b < 0 {
-         missing += &"B".repeat(-self.b as usize);
-      }
-      if self.c < 0 {
-         missing += &"C".repeat(-self.c as usize);
-      }
-      if self.d < 0 {
-         missing += &"D".repeat(-self.d as usize);
-      }
-      if self.e < 0 {
-         missing += &"E".repeat(-self.e as usize);
-      }
-      missing
-   }
-
    pub fn is_not_positive(&self) -> bool {
       self.a <= 0 && self.b <= 0 && self.c <= 0 && self.d <= 0 && self.e <= 0
    }
@@ -266,6 +247,65 @@ impl Molecules {
          _ => {}
       }
       molecules
+   }
+
+   fn set_minues_to_zero(&self) -> Molecules {
+      let mut new_non_zero = self.clone();
+      if new_non_zero.a < 0 {
+         new_non_zero.a = 0;
+      }
+      if new_non_zero.b < 0 {
+         new_non_zero.b = 0;
+      }
+      if new_non_zero.c < 0 {
+         new_non_zero.c = 0;
+      }
+      if new_non_zero.d < 0 {
+         new_non_zero.d = 0;
+      }
+      if new_non_zero.e < 0 {
+         new_non_zero.e = 0;
+      }
+      new_non_zero
+   }
+
+   fn has_enough(&self, required: &Molecules) -> bool {
+      if self.a - required.a < 0 {
+         return false;
+      }
+      if self.b - required.b < 0 {
+         return false;
+      }
+      if self.c - required.c < 0 {
+         return false;
+      }
+      if self.d - required.d < 0 {
+         return false;
+      }
+      if self.e - required.e < 0 {
+         return false;
+      }
+      true
+   }
+
+   // TODO: make return Optional<Molecule>
+   fn get_next_molecule(&self) -> Molecule {
+      if self.a > 0 {
+         return Molecule::A;
+      }
+      if self.b > 0 {
+         return Molecule::B
+      }
+      if self.c > 0 {
+         return Molecule::C;
+      }
+      if self.d > 0 {
+         return Molecule::D;
+      }
+      if self.e > 0 {
+         return Molecule::E;
+      }
+      panic!("no missing molecules");
    }
 }
 
@@ -313,9 +353,8 @@ impl Robot {
       return self.storage.len() == Self::MOLECULE_INVENTORY_SPACE;
    }
 
+   // TODO: make return Option<Molecule> and remove Molecule::None
    fn pick_best_molecule(&self, available: &Molecules) -> Molecule {
-      // TODO: write logic for picking the best molecules
-      // fulfill as many samples as possible
       let mut sorted_samples: Vec<&Sample> = self.held_samples.iter()
          .map(|sample| sample).collect();
       sorted_samples.sort_by_key(|&sample| match sample.health {
@@ -323,35 +362,30 @@ impl Robot {
          _ => 0i8
       });
       // go through every sample
+      let mut held_molecules = self.storage.clone();
       let mut additional_expertise = Molecules::new();
       for sample in sorted_samples {
-         // calculate molecules needed to fulfill the sample
-         let needed_molecules = sample.cost.clone() - self.expertise.clone();
+         eprintln!("analyzing sample: {:?}", sample);
+         let needed_molecules = sample.cost.clone() - self.expertise.clone() - held_molecules.clone();
          // check if already have everything needed
          if needed_molecules.is_not_positive() {
-            // TODO start counting used up samples in a separate var
+            eprintln!("have everything needed for it");
+            held_molecules = held_molecules - (sample.cost.clone() - self.expertise.clone()).set_minues_to_zero();
             additional_expertise = additional_expertise + sample.expertise_gain.clone();
             continue;
          }
-         // TODO
-         // check if possible to gather
-         // calculate missing
-         // check if missing are available
-         // iterate through missing molecules and return the first available
+         if !available.has_enough(&needed_molecules.set_minues_to_zero()) {
+            eprintln!("not enough available");
+            continue;
+         }
+         if needed_molecules.set_minues_to_zero().len() > (Self::MOLECULE_INVENTORY_SPACE - self.storage.len()) {
+            eprintln!("not enough inventory space for: {:?}", needed_molecules);
+            continue;
+         }
+         eprintln!("picking from needed: {:?}", needed_molecules);
+         return needed_molecules.get_next_molecule();
       }
-      todo!();
-   }
-}
-
-impl Sample {
-   pub fn new() -> Self {
-      Self {
-         id: 0,
-         rank: SampleRank::LittleHealth,
-         health: SampleHealth::Unresearched,
-         cost: Molecules::new(),
-         expertise_gain: Molecules::new()
-      }
+      return Molecule::None;
    }
 }
 
@@ -422,7 +456,6 @@ impl Memory {
             cost,
             expertise_gain
          };
-         eprintln!("{:?}", sample);
          match carried_by {
             CarriedBy::Me => {
                self.my_robot.held_samples.push(sample);
@@ -451,9 +484,11 @@ impl Memory {
          GameGoals::GatherMolecules => {
             return self.gather_molecules();
          }
-         _ => {
-            return Command::Wait;
-         },
+         GameGoals::ProduceMedicine => {
+            // TODO: write logic for producing medicine
+            return Command::Goto(Module::Laboratory);
+         }
+         // TODO: add goal for dropping samples that cannot be done
       }
    }
 
@@ -494,7 +529,16 @@ impl Memory {
       if self.my_robot.location != Module::Molecule {
          return Command::Goto(Module::Molecule);
       }
-      return Command::Connect(ConnectOptions::MoleculeType(self.my_robot.pick_best_molecule(&self.available)));
+      let next_molecule = self.my_robot.pick_best_molecule(&self.available);
+      match next_molecule {
+         Molecule::None => {
+            self.goal = GameGoals::ProduceMedicine;
+            return self.process_turn();
+         },
+         _ => {
+            return Command::Connect(ConnectOptions::MoleculeType(next_molecule))
+         }
+      }
    }
 }
 
@@ -542,7 +586,7 @@ fn main() {
    state_machine.parse_initial_input();
    loop {
       state_machine.parse_turn_input();
-      eprintln!("{:?}", state_machine);
+      // eprintln!("{:?}", state_machine);
       println!("{}", state_machine.process_turn());
    }
 }
@@ -589,19 +633,6 @@ mod tests {
       assert_eq!(15, a.len());
       assert!(!a.is_not_positive());
       assert_eq!(25, c.len());
-   }
-
-   #[test]
-   fn lists_missing() {
-      let negative = Molecules {
-         a: 3,
-         b: -1,
-         c: -3,
-         d: -1,
-         e: -1,
-      };
-      assert_eq!(-3, negative.len());
-      assert_eq!("BCCCDE", negative.list_missing());
    }
 
    #[test]
