@@ -316,21 +316,29 @@ impl Robot {
    fn pick_best_molecule(&self, available: &Molecules) -> Molecule {
       // TODO: write logic for picking the best molecules
       // fulfill as many samples as possible
-      let mut sorted_samples: Vec<(u8, i8)> = self.held_samples.iter()
-         .map(|sample| {
-            let health = match sample.health {
-               SampleHealth::Researched(health) => -(health as i8),
-               _ => 0i8
-            };
-            (sample.id, health)
-         }).collect();
-      sorted_samples.sort_by_key(|&(_, health)| health);
+      let mut sorted_samples: Vec<&Sample> = self.held_samples.iter()
+         .map(|sample| sample).collect();
+      sorted_samples.sort_by_key(|&sample| match sample.health {
+         SampleHealth::Researched(health) => -(health as i8),
+         _ => 0i8
+      });
       // go through every sample
-      // calculate molecules needed to fulfill the sample
-      // check if possible to gather
-      // calculate missing
-      // check if missing are available
-      // iterate through missing molecules and return the first available
+      let mut additional_expertise = Molecules::new();
+      for sample in sorted_samples {
+         // calculate molecules needed to fulfill the sample
+         let needed_molecules = sample.cost.clone() - self.expertise.clone();
+         // check if already have everything needed
+         if needed_molecules.is_not_positive() {
+            // TODO start counting used up samples in a separate var
+            additional_expertise = additional_expertise + sample.expertise_gain.clone();
+            continue;
+         }
+         // TODO
+         // check if possible to gather
+         // calculate missing
+         // check if missing are available
+         // iterate through missing molecules and return the first available
+      }
       todo!();
    }
 }
