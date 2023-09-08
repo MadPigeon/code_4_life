@@ -137,6 +137,15 @@ impl SampleRank {
            SampleRank::LittleHealth => 1,
        }
    }
+
+   fn from_integer(value: i8) -> Option<Self> {
+      match value {
+         3 => Some(SampleRank::LotsOfHealth),
+         2 => Some(SampleRank::SomeHealth),
+         1 => Some(SampleRank::LittleHealth),
+         _ => None
+      }
+   }
 }
 
 impl fmt::Display for Module {
@@ -177,17 +186,6 @@ impl CarriedBy {
          0 => Some(CarriedBy::Me),
          1 => Some(CarriedBy::Other),
          -1 => Some(CarriedBy::Cloud),
-         _ => None
-      }
-   }
-}
-
-impl SampleRank {
-   fn from_integer(value: i8) -> Option<Self> {
-      match value {
-         3 => Some(SampleRank::LotsOfHealth),
-         2 => Some(SampleRank::SomeHealth),
-         1 => Some(SampleRank::LittleHealth),
          _ => None
       }
    }
@@ -523,11 +521,16 @@ impl Memory {
       if self.my_robot.eta > 0 {
          return Command::Wait;
       }
+      // TODO: try project strategy
       match self.goal {
          GameGoals::TakeSamples => {
+            // TODO: take perspective samples from cloud
             return self.take_samples();
          },
          GameGoals::ResearchSamples => {
+            // TODO: try strategy of getting at least two samples with bigger health values
+            // TODO: drop samples that cannot be produced to the cloud
+            // TODO: take more samples if I have less than 2 good ones
             return self.research_samples();
          },
          GameGoals::GatherMolecules => {
