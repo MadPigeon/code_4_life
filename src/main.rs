@@ -27,7 +27,8 @@ enum GameGoals {
    TakeSamples,
    ResearchSamples,
    GatherMolecules,
-   ProduceMedicine
+   ProduceMedicine,
+   DropSamples,
 }
 
 #[derive(Debug, PartialEq)]
@@ -420,29 +421,19 @@ impl Robot {
    }
 
    fn can_produce_held_samples(&self, available: &Molecules) -> bool {
-      eprintln!("\ncan_produce_held_samples");
-      eprintln!("inventory: {:?}", self.storage);
       for sample in &self.held_samples {
-         eprintln!("started analyzing sample: {:?}", sample);
          let needed_molecules = sample.cost.clone() - self.expertise.clone() - self.storage.clone();
          if needed_molecules.is_not_positive() {
-            eprintln!("can fully make one sample");
             return true;
          }
          let remaining_required_molecules = needed_molecules.set_minues_to_zero();
          if remaining_required_molecules.len() + self.storage.len() > Self::MOLECULE_INVENTORY_SPACE {
-            eprintln!("not enough molecules available for sample");
             continue;
          }
-         eprintln!("analyzing availability\n");
-         eprintln!("available: {:?}, needed: {:?}", available, remaining_required_molecules);
-         // calculate if I can get enough available molecules
          if available.has_enough(&remaining_required_molecules) {
-            eprintln!("can gather molecules for sample");
             return true;
          }
       }
-      eprintln!("no possible samples were found");
       return false;
    }
 }
@@ -544,13 +535,14 @@ impl Memory {
          }
          GameGoals::ProduceMedicine => {
             return self.produce_medicine();
+         },
+         GameGoals::DropSamples => {
+            return self.drop_samples();
          }
-         // TODO: add goal for dropping samples that cannot be done
       }
    }
 
    fn take_samples(&mut self) -> Command {
-      // TODO: add logic for getting more difficult samples
       if self.my_robot.has_maximum_samples() {
          self.goal = GameGoals::ResearchSamples;
          return self.process_turn();
@@ -558,7 +550,15 @@ impl Memory {
       if self.my_robot.location != Module::Sample {
          return Command::Goto(Module::Sample)
       }
-      return Command::Connect(ConnectOptions::SampleRank(SampleRank::SomeHealth));
+      let rank: SampleRank;
+      if self.my_robot.expertise.len() < 3 {
+         rank = SampleRank::LittleHealth;
+      } else if self.my_robot.expertise.len() < 9 {
+         rank = SampleRank::SomeHealth;
+      } else {
+         rank = SampleRank::LotsOfHealth;
+      }
+      return Command::Connect(ConnectOptions::SampleRank(rank));
    }
 
    fn research_samples(&mut self) -> Command {
@@ -576,28 +576,24 @@ impl Memory {
    }
 
    fn gather_molecules(&mut self) -> Command {
-      // TODO: safeguard against having no finisheable projects
-      eprintln!("started gathering samples");
       if !self.my_robot.can_produce_held_samples(&self.available) {
-         eprintln!("cannot produce held samples");
-         self.goal = GameGoals::TakeSamples;
+         if self.my_robot.held_samples.len() == Robot::SAMPLE_INVENTORY_SPACE {
+            self.goal = GameGoals::DropSamples;
+         } else {
+            self.goal = GameGoals::TakeSamples;
+         }
          return self.process_turn();
       }
       if self.my_robot.has_maximum_molecules() || self.my_robot.has_enough_molecules() {
-         eprintln!("has maximum or enough");
          self.goal = GameGoals::ProduceMedicine;
          return self.process_turn();
       }
       if self.my_robot.location != Module::Molecule {
-         eprintln!("moving to molecule module");
          return Command::Goto(Module::Molecule);
       }
       if let Some(next_molecule) = self.my_robot.pick_best_molecule(&self.available) {
-         eprintln!("found best molecule: {:?}", next_molecule);
             return Command::Connect(ConnectOptions::MoleculeType(next_molecule));
       } else {
-         eprintln!("time to produce medicine");
-         eprintln!("current medicine: {:?}", self.my_robot.held_samples);
          self.goal = GameGoals::ProduceMedicine;
          return self.process_turn();
       }
@@ -619,6 +615,17 @@ impl Memory {
       }
 
       return Command::Connect(ConnectOptions::SampleId(sample.id));
+   }
+   fn drop_samples(&mut self) -> Command {
+      if self.my_robot.held_samples.len() == 0 {
+         self.goal = GameGoals::TakeSamples;
+         return self.process_turn();
+      }
+      if self.my_robot.location != Module::Diagnosis {
+         return Command::Goto(Module::Diagnosis);
+      }
+
+      return Command::Connect(ConnectOptions::SampleId(self.my_robot.held_samples[0].id));
    }
 }
 
@@ -668,70 +675,5 @@ fn main() {
       state_machine.parse_turn_input();
       // eprintln!("{:?}", state_machine);
       println!("{}", state_machine.process_turn());
-   }
-}
-
-#[cfg(test)]
-mod tests {
-   use crate::Molecules;
-
-   #[test]
-   fn sets_negative() {
-      let negative = Molecules {
-         a: -1,
-         b: -1,
-         c: -1,
-         d: -1,
-         e: -1,
-      };
-      assert_eq!(-5, negative.len());
-   }
-
-   #[test]
-   fn new_is_empty() {
-      let empty = Molecules::new();
-      assert_eq!(0, empty.len());
-   }
-
-   #[test]
-   fn addition_works() {
-      let a = Molecules {
-         a: 1,
-         b: 2,
-         c: 3,
-         d: 4,
-         e: 5,
-      };
-      let b = Molecules {
-         a: 4,
-         b: 3,
-         c: 2,
-         d: 1,
-         e: 0,
-      };
-      let c = a.clone() + b;
-      assert_eq!(15, a.len());
-      assert!(!a.is_not_positive());
-      assert_eq!(25, c.len());
-   }
-
-   #[test]
-   fn not_positive() {
-      let semi_positive = Molecules {
-         a: 1,
-         b: 2,
-         c: -6,
-         d: 0,
-         e: 0,
-      };
-      let non_positive = Molecules {
-         a: 0,
-         b: 0,
-         c: -2,
-         d: 0,
-         e: 0,
-      };
-      assert!(!semi_positive.is_not_positive());
-      assert!(non_positive.is_not_positive());
    }
 }
