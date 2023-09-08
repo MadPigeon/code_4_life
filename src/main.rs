@@ -14,7 +14,6 @@
  */
 use std::ops::{Add, Sub};
 use std::io;
-use std::fmt;
 
 macro_rules! parse_input {
    ($x:expr, $t:ty) => {
@@ -112,7 +111,7 @@ struct Robot {
    location: Module,
    eta: u8,
    score: i16,
-   storage: Molecules,
+   inventory: Molecules,
    expertise: Molecules,
    held_samples: Vec<Sample>
 }
@@ -148,34 +147,22 @@ impl SampleRank {
    }
 }
 
-impl fmt::Display for Module {
-   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl ConnectOptions {
+   fn to_string(&self) -> String {
       match self {
-         Module::Spawn => write!(f, "START_POS"),
-         Module::Sample => write!(f, "SAMPLES"),
-         Module::Diagnosis => write!(f, "DIAGNOSIS"),
-         Module::Molecule => write!(f, "MOLECULES"),
-         Module::Laboratory => write!(f, "LABORATORY"),
+         ConnectOptions::SampleRank(rank) => rank.as_value().to_string(),
+         ConnectOptions::MoleculeType(molecule_type) => molecule_type.as_char().to_string(),
+         ConnectOptions::SampleId(id) => id.to_string(),
       }
    }
 }
 
-impl fmt::Display for ConnectOptions {
-   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl Command {
+   fn to_string(&self) -> String {
       match self {
-         ConnectOptions::SampleRank(rank) => write!(f, "{}", rank.as_value()),
-         ConnectOptions::MoleculeType(molecule_type) => write!(f, "{}", molecule_type.as_char()),
-         ConnectOptions::SampleId(id) => write!(f, "{}", id),
-      }
-   }
-}
-
-impl fmt::Display for Command {
-   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-      match self {
-         Command::Goto(module) => write!(f, "GOTO {}", module),
-         Command::Connect(options) => write!(f, "CONNECT {}", options),
-         _ => write!(f, "WAIT"),
+         Command::Goto(module) => format!("GOTO {}", module.as_str()),
+         Command::Connect(options) => format!("CONNECT {}", options.to_string()),
+         _ => "WAIT".to_owned(),
       }
    }
 }
@@ -202,6 +189,7 @@ impl SampleHealth {
 }
 
 impl Molecules {
+   const MIN_CONSTRUCTOR_SLICE_LENGTH: usize = 5;
    pub fn new() -> Self {
       Self {
          a: 0,
@@ -213,7 +201,7 @@ impl Molecules {
    }
 
    pub fn from_slice(slice: &[&str]) -> Self {
-      if slice.len() >= 5 {
+      if slice.len() >= Self::MIN_CONSTRUCTOR_SLICE_LENGTH {
          Self {
             a: parse_input!(slice[0], i8),
             b: parse_input!(slice[1], i8),
@@ -307,24 +295,26 @@ impl Molecules {
 }
 
 impl Robot {
+   const EXPERTISE_UNTIL_MIDDLE_RANK: i8 = 3;
+   const EXPERTISE_UNTIL_HIGH_RANK: i8 = 9;
    pub fn new() -> Self {
       Self {
          location: Module::Spawn,
          eta: 0,
          score: 0,
-         storage: Molecules::new(),
+         inventory: Molecules::new(),
          expertise: Molecules::new(),
          held_samples: Vec::new()
       }
    }
 
-   const SAMPLE_INVENTORY_SPACE: usize = 3;
-   const MOLECULE_INVENTORY_SPACE: i8 = 10;
+   const MAX_SAMPLES: usize = 3;
+   const MAX_MOLECULES: i8 = 10;
    fn set_from_inputs(&mut self, inputs: Vec<&str>) {
       self.location = Module::from_str(inputs[0].trim()).unwrap();
       self.eta = parse_input!(inputs[1], u8);
       self.score = parse_input!(inputs[2], i16);
-      self.storage = Molecules::from_slice(&inputs[3..8]);
+      self.inventory = Molecules::from_slice(&inputs[3..8]);
       self.expertise = Molecules::from_slice(&inputs[8..13]);
    }
 
@@ -346,7 +336,7 @@ impl Robot {
       let sorted_samples: Vec<&Sample> = self.get_sorted_samples();
       for sample in sorted_samples {
          let cost = sample.cost.clone() - self.expertise.clone();
-         if self.storage.has_enough(&cost.set_minues_to_zero()) {
+         if self.inventory.has_enough(&cost.set_minues_to_zero()) {
             return Some(sample);
          } else {
             continue;
@@ -356,17 +346,17 @@ impl Robot {
    }
 
    fn has_maximum_samples(&self) -> bool {
-      return self.held_samples.len() >= Self::SAMPLE_INVENTORY_SPACE
+      return self.held_samples.len() >= Self::MAX_SAMPLES
    }
 
    fn has_maximum_molecules(&self) -> bool {
-      return self.storage.len() == Self::MOLECULE_INVENTORY_SPACE;
+      return self.inventory.len() == Self::MAX_MOLECULES;
    }
 
    fn pick_best_molecule(&self, available: &Molecules) -> Option<Molecule> {
       let sorted_samples: Vec<&Sample> = self.get_sorted_samples();
       // go through every sample
-      let mut held_molecules = self.storage.clone();
+      let mut held_molecules = self.inventory.clone();
       let mut additional_expertise = Molecules::new();
       for sample in sorted_samples {
          let needed_molecules = sample.cost.clone() - self.expertise.clone() - held_molecules.clone();
@@ -379,7 +369,7 @@ impl Robot {
          if !available.has_enough(&needed_molecules.set_minues_to_zero()) {
             continue;
          }
-         if needed_molecules.set_minues_to_zero().len() > (Self::MOLECULE_INVENTORY_SPACE - self.storage.len()) {
+         if needed_molecules.set_minues_to_zero().len() > (Self::MAX_MOLECULES - self.inventory.len()) {
             continue;
          }
          if let Some(found_molecule) = needed_molecules.get_next_molecule() {
@@ -403,7 +393,7 @@ impl Robot {
 
    fn has_enough_molecules(&self) -> bool {
       let sorted_samples: Vec<&Sample> = self.get_sorted_samples();
-      let mut held_molecules = self.storage.clone();
+      let mut held_molecules = self.inventory.clone();
       let mut accumulated_expertise = self.expertise.clone();
       for sample in sorted_samples {
          // copied from get_most_interesting_ready_sample
@@ -420,12 +410,12 @@ impl Robot {
 
    fn can_produce_held_samples(&self, available: &Molecules) -> bool {
       for sample in &self.held_samples {
-         let needed_molecules = sample.cost.clone() - self.expertise.clone() - self.storage.clone();
+         let needed_molecules = sample.cost.clone() - self.expertise.clone() - self.inventory.clone();
          if needed_molecules.is_not_positive() {
             return true;
          }
          let remaining_required_molecules = needed_molecules.set_minues_to_zero();
-         if remaining_required_molecules.len() + self.storage.len() > Self::MOLECULE_INVENTORY_SPACE {
+         if remaining_required_molecules.len() + self.inventory.len() > Self::MAX_MOLECULES {
             continue;
          }
          if available.has_enough(&remaining_required_molecules) {
@@ -433,6 +423,16 @@ impl Robot {
          }
       }
       return false;
+   }
+
+   fn pick_sample_based_on_expertise(&self) -> SampleRank {
+      if self.expertise.len() < Self::EXPERTISE_UNTIL_MIDDLE_RANK {
+         SampleRank::LittleHealth
+      } else if self.expertise.len() < Self::EXPERTISE_UNTIL_HIGH_RANK {
+         SampleRank::SomeHealth
+      } else {
+         SampleRank::LotsOfHealth
+      }
    }
 }
 
@@ -553,14 +553,7 @@ impl Memory {
       if self.my_robot.location != Module::Sample {
          return Command::Goto(Module::Sample)
       }
-      let rank: SampleRank;
-      if self.my_robot.expertise.len() < 3 {
-         rank = SampleRank::LittleHealth;
-      } else if self.my_robot.expertise.len() < 9 {
-         rank = SampleRank::SomeHealth;
-      } else {
-         rank = SampleRank::LotsOfHealth;
-      }
+      let rank: SampleRank = self.my_robot.pick_sample_based_on_expertise();
       return Command::Connect(ConnectOptions::SampleRank(rank));
    }
 
@@ -580,7 +573,7 @@ impl Memory {
 
    fn gather_molecules(&mut self) -> Command {
       if !self.my_robot.can_produce_held_samples(&self.available) {
-         if self.my_robot.held_samples.len() == Robot::SAMPLE_INVENTORY_SPACE {
+         if self.my_robot.held_samples.len() == Robot::MAX_SAMPLES {
             self.goal = GameGoals::DropSamples;
          } else {
             self.goal = GameGoals::TakeSamples;
@@ -659,14 +652,30 @@ impl Sub for Molecules {
 }
 
 impl Module {
+   const SAMPLE: &str = "SAMPLES";
+   const DIAGNOSIS: &str = "DIAGNOSIS";
+   const MOLECULES: &str = "MOLECULES";
+   const LABORATORY: &str = "LABORATORY";
+   const SPAWN: &str = "START_POS";
+
    fn from_str(s: &str) -> Result<Self, &'static str> {
       match s {
-         "SAMPLES" => Ok(Module::Sample),
-         "DIAGNOSIS" => Ok(Module::Diagnosis),
-         "MOLECULES" => Ok(Module::Molecule),
-         "LABORATORY" => Ok(Module::Laboratory),
-         "START_POS" => Ok(Module::Spawn),
+         Self::SAMPLE => Ok(Module::Sample),
+         Self::DIAGNOSIS => Ok(Module::Diagnosis),
+         Self::MOLECULES => Ok(Module::Molecule),
+         Self::LABORATORY => Ok(Module::Laboratory),
+         Self::SPAWN => Ok(Module::Spawn),
          _ => Err("Invalid module name"),
+      }
+   }
+
+   fn as_str(&self) -> &str {
+      match self {
+         Module::Spawn => Self::SPAWN,
+         Module::Sample => Self::SAMPLE,
+         Module::Diagnosis => Self::DIAGNOSIS,
+         Module::Molecule => Self::MOLECULES,
+         Module::Laboratory => Self::LABORATORY,
       }
    }
 }
@@ -677,6 +686,6 @@ fn main() {
    loop {
       state_machine.parse_turn_input();
       // eprintln!("{:?}", state_machine);
-      println!("{}", state_machine.process_turn());
+      println!("{}", state_machine.process_turn().to_string());
    }
 }
