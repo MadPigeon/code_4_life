@@ -19,6 +19,75 @@ macro_rules! parse_input {
    };
 }
 
+mod input_reading {
+   use super::molecules;
+   use super::robot;
+   use super::carried_by;
+   use super::sample;
+   use std::io;
+
+   pub fn parse_projects() -> Vec<molecules::Molecules> {
+   let mut input_line = String::new();
+   io::stdin().read_line(&mut input_line).unwrap();
+   let project_count = parse_input!(input_line, u8);
+
+   let mut projects = Vec::new();
+   for _ in 0..project_count {
+      io::stdin().read_line(&mut input_line).unwrap();
+      let inputs = input_line.split_whitespace().collect::<Vec<_>>();
+      projects.push(molecules::Molecules::from_slice(&inputs[0..5]));
+   }
+   return projects;
+   }
+
+   pub fn parse_turn_input() -> (robot::Robot, robot::Robot, Vec<sample::Sample>, molecules::Molecules) {
+      let mut input_line = String::new();
+      io::stdin().read_line(&mut input_line).unwrap();
+      let mut my_robot = robot::Robot::new_from_inputs(input_line.split_whitespace().collect::<Vec<_>>());
+
+      input_line.clear();
+      io::stdin().read_line(&mut input_line).unwrap();
+      let mut enemy_robot = robot::Robot::new_from_inputs(input_line.split_whitespace().collect::<Vec<_>>());
+
+      input_line.clear();
+      io::stdin().read_line(&mut input_line).unwrap();
+      let inputs = input_line.split_whitespace().collect::<Vec<_>>();
+      let available = molecules::Molecules::from_slice(&inputs[0..5]);
+
+      let mut cloud = Vec::new();
+      
+      input_line.clear();
+      io::stdin().read_line(&mut input_line).unwrap();
+      let sample_count = parse_input!(input_line, u16);
+      for _ in 0..sample_count {
+         input_line.clear();
+         io::stdin().read_line(&mut input_line).unwrap();
+         let inputs = input_line.split_whitespace().collect::<Vec<_>>();
+         
+         let sample_id = parse_input!(inputs[0], u8);
+         let carried_by = carried_by::CarriedBy::from_integer(parse_input!(inputs[1], i8)).unwrap();
+         let rank = sample::SampleRank::from_integer(parse_input!(inputs[2], i8)).unwrap();
+         let expertise_gain: molecules::Molecules = molecules::Molecules::from_letter(inputs[3].chars().next().unwrap());
+         let health = sample::SampleHealth::from_integer(parse_input!(inputs[4], i8));
+         let cost = molecules::Molecules::from_slice(&inputs[5..10]);
+         
+         let sample = sample::Sample::new(sample_id, rank, health, cost, expertise_gain);
+         match carried_by {
+            carried_by::CarriedBy::Me => {
+               my_robot.append_sample(sample);
+            },
+            carried_by::CarriedBy::Other => {
+               enemy_robot.append_sample(sample)
+            },
+            carried_by::CarriedBy::Cloud => {
+               cloud.push(sample)
+            }
+         }
+      }
+      return (my_robot, enemy_robot, cloud, available);
+   }
+}
+
 mod module {
    #[derive(Debug, PartialEq)]
    pub enum Module {
@@ -377,7 +446,6 @@ mod robot {
       const EXPERTISE_UNTIL_HIGH_RANK: i8 = 9;
       pub fn get_held_samples(&self) -> &Vec<sample::Sample> { &self.held_samples }
       pub fn append_sample(&mut self, sample: sample::Sample) { self.held_samples.push(sample);}
-      pub fn clear_held_samples(&mut self) { self.held_samples = Vec::new(); }
       pub fn get_eta(&self) -> u8 { self.eta }
       pub fn get_location(&self) -> &module::Module { &self.location }
       pub fn new() -> Self {
@@ -391,14 +459,17 @@ mod robot {
          }
       }
 
-      pub const MAX_SAMPLES: usize = 3;
-      pub const MAX_MOLECULES: i8 = 10;
-      pub fn set_from_inputs(&mut self, inputs: Vec<&str>) {
-         self.location = module::Module::from_str(inputs[0].trim()).unwrap();
-         self.eta = parse_input!(inputs[1], u8);
-         self.score = parse_input!(inputs[2], i16);
-         self.inventory = molecules::Molecules::from_slice(&inputs[3..8]);
-         self.expertise = molecules::Molecules::from_slice(&inputs[8..13]);
+      const MAX_SAMPLES: usize = 3;
+      const MAX_MOLECULES: i8 = 10;
+      pub fn new_from_inputs(inputs: Vec<&str>) -> Self {
+         Self {
+         location: module::Module::from_str(inputs[0].trim()).unwrap(),
+         eta: parse_input!(inputs[1], u8),
+         score: parse_input!(inputs[2], i16),
+         inventory: molecules::Molecules::from_slice(&inputs[3..8]),
+         expertise: molecules::Molecules::from_slice(&inputs[8..13]),
+         held_samples: Vec::new(),
+         }
       }
 
       pub fn get_unresearched_sample(&self) -> Option<&sample::Sample> {
@@ -492,20 +563,19 @@ mod robot {
       }
 
       pub fn can_produce_held_samples(&self, available: &molecules::Molecules) -> bool {
-         for sample in &self.held_samples {
-            let needed_molecules = sample.get_cost().clone() - self.expertise.clone() - self.inventory.clone();
-            if needed_molecules.is_not_positive() {
-               return true;
-            }
-            let remaining_required_molecules = needed_molecules.set_minues_to_zero();
-            if remaining_required_molecules.len() + self.inventory.len() > Self::MAX_MOLECULES {
-               continue;
-            }
-            if available.has_enough(&remaining_required_molecules) {
-               return true;
-            }
+         self.held_samples.iter().any(|sample| self.can_produce_sample(sample, available))
+      }
+
+      pub fn can_produce_sample(&self, sample: &sample::Sample, available: &molecules::Molecules) -> bool {
+         let needed_molecules = sample.get_cost().clone() - self.expertise.clone() - self.inventory.clone();
+         if needed_molecules.is_not_positive() {
+             return true;
          }
-         return false;
+         let remaining_required_molecules = needed_molecules.set_minues_to_zero();
+         if remaining_required_molecules.len() + self.inventory.len() > Self::MAX_MOLECULES {
+             return false;
+         }     
+         available.has_enough(&remaining_required_molecules)
       }
 
       pub fn pick_sample_based_on_expertise(&self) -> sample::SampleRank {
@@ -526,11 +596,9 @@ mod memory {
    use super::robot;
    use super::command;
    use super::sample;
-   use super::carried_by;
    use super::module;
    use super::connect_options;
-
-   use std::io;
+   use super::input_reading;
 
    #[derive(Debug)]
    enum GameGoals {
@@ -538,7 +606,7 @@ mod memory {
       ResearchSamples,
       GatherMolecules,
       ProduceMedicine,
-      DropSamples,
+      DropImpossibleSamples,
    }
 
    #[derive(Debug)]
@@ -564,66 +632,15 @@ mod memory {
       }
 
       pub fn parse_initial_input(&mut self) {
-         let mut input_line = String::new();
-         io::stdin().read_line(&mut input_line).unwrap();
-         let project_count = parse_input!(input_line, u8);
-
-         self.projects = Vec::new();
-         for _ in 0..project_count {
-            io::stdin().read_line(&mut input_line).unwrap();
-            let inputs = input_line.split_whitespace().collect::<Vec<_>>();
-            self.projects.push(molecules::Molecules::from_slice(&inputs[0..5]));
-         }
+         self.projects = input_reading::parse_projects();
       }
 
       pub fn parse_turn_input(&mut self) {
-         let mut input_line = String::new();
-         io::stdin().read_line(&mut input_line).unwrap();
-         self.my_robot
-            .set_from_inputs(input_line.split_whitespace().collect::<Vec<_>>());
-
-         input_line.clear();
-         io::stdin().read_line(&mut input_line).unwrap();
-         self.enemy_robot
-            .set_from_inputs(input_line.split_whitespace().collect::<Vec<_>>());
-
-         input_line.clear();
-         io::stdin().read_line(&mut input_line).unwrap();
-         let inputs = input_line.split_whitespace().collect::<Vec<_>>();
-         self.available = molecules::Molecules::from_slice(&inputs[0..5]);
-
-         self.cloud = Vec::new();
-         self.my_robot.clear_held_samples();
-         self.enemy_robot.clear_held_samples();
-         
-         input_line.clear();
-         io::stdin().read_line(&mut input_line).unwrap();
-         let sample_count = parse_input!(input_line, u16);
-         for _ in 0..sample_count {
-            input_line.clear();
-            io::stdin().read_line(&mut input_line).unwrap();
-            let inputs = input_line.split_whitespace().collect::<Vec<_>>();
-            
-            let sample_id = parse_input!(inputs[0], u8);
-            let carried_by = carried_by::CarriedBy::from_integer(parse_input!(inputs[1], i8)).unwrap();
-            let rank = sample::SampleRank::from_integer(parse_input!(inputs[2], i8)).unwrap();
-            let expertise_gain: molecules::Molecules = molecules::Molecules::from_letter(inputs[3].chars().next().unwrap());
-            let health = sample::SampleHealth::from_integer(parse_input!(inputs[4], i8));
-            let cost = molecules::Molecules::from_slice(&inputs[5..10]);
-            
-            let sample = sample::Sample::new(sample_id, rank, health, cost, expertise_gain);
-            match carried_by {
-               carried_by::CarriedBy::Me => {
-                  self.my_robot.append_sample(sample);
-               },
-               carried_by::CarriedBy::Other => {
-                  self.enemy_robot.append_sample(sample)
-               },
-               carried_by::CarriedBy::Cloud => {
-                  self.cloud.push(sample)
-               }
-            }
-         }
+         let (my_robot, enemy_robot, cloud, available) = input_reading::parse_turn_input();
+         self.my_robot = my_robot;
+         self.enemy_robot = enemy_robot;
+         self.cloud = cloud;
+         self.available = available;
       }
 
       pub fn process_turn(&mut self) -> command::Command {
@@ -638,8 +655,6 @@ mod memory {
             },
             GameGoals::ResearchSamples => {
                // TODO: try strategy of getting at least two samples with bigger health values
-               // TODO: drop samples that cannot be produced to the cloud
-               // TODO: take more samples if I have less than 2 good ones
                return self.research_samples();
             },
             GameGoals::GatherMolecules => {
@@ -648,8 +663,8 @@ mod memory {
             GameGoals::ProduceMedicine => {
                return self.produce_medicine();
             },
-            GameGoals::DropSamples => {
-               return self.drop_samples();
+            GameGoals::DropImpossibleSamples => {
+               return self.drop_impossible_samples();
             }
          }
       }
@@ -671,7 +686,7 @@ mod memory {
          if let Some(found_sample) = self.my_robot.get_unresearched_sample() {
             sample = found_sample;
          } else {
-            self.goal = GameGoals::GatherMolecules;
+            self.goal = GameGoals::DropImpossibleSamples;
             return self.process_turn();
          }
          if self.my_robot.get_location() != &module::Module::Diagnosis {
@@ -682,8 +697,8 @@ mod memory {
 
       fn gather_molecules(&mut self) -> command::Command {
          if !self.my_robot.can_produce_held_samples(&self.available) {
-            if self.my_robot.get_held_samples().len() == robot::Robot::MAX_SAMPLES {
-               self.goal = GameGoals::DropSamples;
+            if self.my_robot.has_maximum_samples() {
+               self.goal = GameGoals::DropImpossibleSamples;
             } else {
                self.goal = GameGoals::TakeSamples;
             }
@@ -721,7 +736,10 @@ mod memory {
 
          return command::Command::Connect(connect_options::ConnectOptions::SampleId(sample.get_id()));
       }
-      fn drop_samples(&mut self) -> command::Command {
+
+      fn drop_impossible_samples(&mut self) -> command::Command {
+         // TODO: drop samples that cannot be produced to the cloud
+         // TODO: take more samples if I have less than 2 good ones
          if self.my_robot.get_held_samples().len() == 0 {
             self.goal = GameGoals::TakeSamples;
             return self.process_turn();
