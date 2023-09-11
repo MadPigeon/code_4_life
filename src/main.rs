@@ -398,30 +398,31 @@ mod molecules {
       }
    }
 
-   // TODO: replace with references and remove cloneability
-   impl Add for Molecules {
+   impl Add<&Molecules> for &Molecules {
       type Output = Molecules;
    
-      fn add(mut self, other: Molecules) -> Molecules {
-         self.a += other.a;
-         self.b += other.b;
-         self.c += other.c;
-         self.d += other.d;
-         self.e += other.e;
-         self
+      fn add(self, other: &Molecules) -> Molecules {
+         Molecules {
+         a: self.a + other.a,
+         b: self.b + other.b,
+         c: self.c + other.c,
+         d: self.d + other.d,
+         e: self.e + other.e,
+         }
       }
    }
    
-   impl Sub for Molecules {
+   impl Sub<&Molecules> for &Molecules {
       type Output = Molecules;
    
-      fn sub(mut self, other: Molecules) -> Molecules {
-         self.a -= other.a;
-         self.b -= other.b;
-         self.c -= other.c;
-         self.d -= other.d;
-         self.e -= other.e;
-         self
+      fn sub(self, other: &Molecules) -> Molecules {
+         Molecules {
+         a: self.a - other.a,
+         b: self.b - other.b,
+         c: self.c - other.c,
+         d: self.d - other.d,
+         e: self.e - other.e,
+         }
       }
    }
 }
@@ -489,7 +490,7 @@ mod robot {
       pub fn get_most_interesting_ready_sample(&self) -> Option<&sample::Sample> {
          let sorted_samples: Vec<&sample::Sample> = self.get_sorted_samples();
          for sample in sorted_samples {
-            let cost = sample.get_cost().clone() - self.expertise.clone();
+            let cost = sample.get_cost() - &self.expertise;
             if self.inventory.has_enough(&cost.set_minues_to_zero()) {
                return Some(sample);
             } else {
@@ -507,17 +508,18 @@ mod robot {
          return self.inventory.len() == Self::MAX_MOLECULES;
       }
 
+      // TODO: inspect for similarities with has_enough_molecules and refactor
       pub fn pick_best_molecule(&self, available: &molecules::Molecules) -> Option<molecules::Molecule> {
          let sorted_samples: Vec<&sample::Sample> = self.get_sorted_samples();
          // go through every sample
          let mut held_molecules = self.inventory.clone();
          let mut additional_expertise = molecules::Molecules::new();
          for sample in sorted_samples {
-            let needed_molecules = sample.get_cost().clone() - self.expertise.clone() - held_molecules.clone();
+            let needed_molecules = &(sample.get_cost() - &self.expertise) - &held_molecules;
             // check if already have everything needed
             if needed_molecules.is_not_positive() {
-               held_molecules = held_molecules - (sample.get_cost().clone() - self.expertise.clone()).set_minues_to_zero();
-               additional_expertise = additional_expertise + sample.get_expertise_gain().clone();
+               held_molecules = &held_molecules - &(sample.get_cost() - &self.expertise).set_minues_to_zero();
+               additional_expertise = &additional_expertise + sample.get_expertise_gain();
                continue;
             }
             if !available.has_enough(&needed_molecules.set_minues_to_zero()) {
@@ -551,10 +553,10 @@ mod robot {
          let mut accumulated_expertise = self.expertise.clone();
          for sample in sorted_samples {
             // copied from get_most_interesting_ready_sample
-            let needed_molecules = sample.get_cost().clone() - accumulated_expertise.clone() - held_molecules.clone();
+            let needed_molecules = sample.get_cost() - &(&accumulated_expertise + &held_molecules);
             if needed_molecules.is_not_positive() {
-               accumulated_expertise = accumulated_expertise + sample.get_expertise_gain().clone();
-               held_molecules = held_molecules - needed_molecules.set_minues_to_zero();
+               accumulated_expertise = &accumulated_expertise + sample.get_expertise_gain();
+               held_molecules = &held_molecules - &needed_molecules.set_minues_to_zero();
             } else {
                return false;
             }
@@ -562,12 +564,12 @@ mod robot {
          return true;
       }
 
-      pub fn can_produce_held_samples(&self, available: &molecules::Molecules) -> bool {
+      pub fn can_produce_one_held_sample(&self, available: &molecules::Molecules) -> bool {
          self.held_samples.iter().any(|sample| self.can_produce_sample(sample, available))
       }
 
       pub fn can_produce_sample(&self, sample: &sample::Sample, available: &molecules::Molecules) -> bool {
-         let needed_molecules = sample.get_cost().clone() - self.expertise.clone() - self.inventory.clone();
+         let needed_molecules = sample.get_cost() - &(&self.expertise + &self.inventory);
          if needed_molecules.is_not_positive() {
              return true;
          }
@@ -586,6 +588,14 @@ mod robot {
          } else {
             sample::SampleRank::LotsOfHealth
          }
+      }
+
+      pub fn get_impossible_samples(&self, available: &molecules::Molecules) -> Vec<&sample::Sample> {
+         self.get_held_samples().iter().filter(|sample: &&sample::Sample| !self.can_produce_sample(sample, available)).collect::<Vec<_>>()
+      }
+
+      pub fn has_enough_samples(&self) -> bool {
+         self.held_samples.len() >= 2
       }
    }
 
@@ -606,7 +616,7 @@ mod memory {
       ResearchSamples,
       GatherMolecules,
       ProduceMedicine,
-      DropImpossibleSamples,
+      DropSamples,
    }
 
    #[derive(Debug)]
@@ -662,8 +672,8 @@ mod memory {
             GameGoals::ProduceMedicine => {
                return self.produce_medicine();
             },
-            GameGoals::DropImpossibleSamples => {
-               return self.drop_impossible_samples();
+            GameGoals::DropSamples => {
+               return self.drop_samples();
             }
          }
       }
@@ -686,7 +696,7 @@ mod memory {
          if let Some(found_sample) = self.my_robot.get_unresearched_sample() {
             sample = found_sample;
          } else {
-            self.goal = GameGoals::DropImpossibleSamples;
+            self.goal = GameGoals::DropSamples;
             return self.process_turn();
          }
          if self.my_robot.get_location() != &module::Module::Diagnosis {
@@ -696,9 +706,9 @@ mod memory {
       }
 
       fn gather_molecules(&mut self) -> command::Command {
-         if !self.my_robot.can_produce_held_samples(&self.available) {
+         if !self.my_robot.can_produce_one_held_sample(&self.available) {
             if self.my_robot.has_maximum_samples() {
-               self.goal = GameGoals::DropImpossibleSamples;
+               self.goal = GameGoals::DropSamples;
             } else {
                self.goal = GameGoals::TakeSamples;
             }
@@ -737,11 +747,10 @@ mod memory {
          return command::Command::Connect(connect_options::ConnectOptions::SampleId(sample.get_id()));
       }
 
-      // TODO: rename method and goal to drop_samples and move logic for getting unwanted samples into robot
-      fn drop_impossible_samples(&mut self) -> command::Command {
-         let samples_to_drop = self.my_robot.get_held_samples().iter().filter(|sample| !self.my_robot.can_produce_sample(sample, &self.available)).collect::<Vec<_>>();
+      fn drop_samples(&mut self) -> command::Command {
+         let samples_to_drop: Vec<&sample::Sample> = self.my_robot.get_impossible_samples(&self.available);
          if samples_to_drop.len() == 0 {
-            if self.my_robot.get_held_samples().len() >= 2 {
+            if self.my_robot.has_enough_samples() {
                self.goal = GameGoals::GatherMolecules;
             } else {
                self.goal = GameGoals::TakeSamples;
