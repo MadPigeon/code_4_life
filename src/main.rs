@@ -26,19 +26,13 @@ mod input_reading {
    use super::sample;
    use std::io;
 
-   pub fn parse_projects() -> Vec<molecules::Molecules> {
-   let mut input_line = String::new();
-   io::stdin().read_line(&mut input_line).unwrap();
-   let project_count = parse_input!(input_line, u8);
-
-   let mut projects = Vec::new();
-   for _ in 0..project_count {
-      input_line.clear();
+   pub fn ignore_projects() -> () {
+      let mut input_line = String::new();
       io::stdin().read_line(&mut input_line).unwrap();
-      let inputs = input_line.split_whitespace().collect::<Vec<_>>();
-      projects.push(molecules::Molecules::from_slice(&inputs[0..5]));
-   }
-   return projects;
+      let project_count = parse_input!(input_line, u8);
+      for _ in 0..project_count {
+         io::stdin().read_line(&mut input_line).unwrap();
+      }
    }
 
    pub fn parse_turn_input() -> (robot::Robot, robot::Robot, Vec<sample::Sample>, molecules::Molecules) {
@@ -266,7 +260,6 @@ mod command {
 
 mod molecules {
    use std::ops::{Add, Sub};
-   use std::cmp::max;
 
    #[derive(Debug)]
    pub enum Molecule {
@@ -405,14 +398,6 @@ mod molecules {
          || self.c < 0
          || self.d < 0
          || self.e < 0
-      }
-
-      pub fn merge(&mut self, project: &Molecules) {
-         self.a = max(self.a, project.a);
-         self.b = max(self.b, project.b);
-         self.c = max(self.c, project.c);
-         self.d = max(self.d, project.d);
-         self.e = max(self.e, project.e);
       }
    }
 
@@ -608,38 +593,12 @@ mod robot {
          }
       }
 
-      pub fn pick_sample_based_on_projects(&self) -> sample::SampleRank {
-         sample::SampleRank::LittleHealth
-      }
-
       pub fn get_impossible_samples(&self, available: &molecules::Molecules) -> Vec<&sample::Sample> {
          self.get_held_samples().iter().filter(|sample: &&sample::Sample| !self.can_produce_sample(sample, available)).collect::<Vec<_>>()
       }
 
       pub fn has_enough_samples(&self) -> bool {
          self.held_samples.len() >= 2
-      }
-
-      pub fn are_all_projects_satisfied(&self, projects: &Vec<molecules::Molecules>) -> bool {
-         projects.iter().all(|project| {
-            (project - &self.expertise).is_not_positive()
-         })
-      }
-
-      pub fn get_project_irrelevant_samples<'a>(&self, projects: &'a Vec<molecules::Molecules>) -> Vec<&sample::Sample> {
-         let mut total_required_expertise = molecules::Molecules::new();
-         for project in projects {
-             total_required_expertise.merge(project);
-         }
-         total_required_expertise = &total_required_expertise - &self.expertise;
-         total_required_expertise = total_required_expertise.set_minues_to_zero();
-         let mut irrelevant_samples = Vec::new();
-         for sample in &self.held_samples {
-            if (&total_required_expertise - sample.get_expertise_gain()).has_any_negatives() {
-                 irrelevant_samples.push(sample);
-             }
-         }
-         irrelevant_samples
       }
    }
 
@@ -666,7 +625,6 @@ mod memory {
    #[derive(Debug)]
    pub struct Memory {
       goal: GameGoals,
-      projects: Vec<molecules::Molecules>,
       my_robot: robot::Robot,
       enemy_robot: robot::Robot,
       available: molecules::Molecules,
@@ -677,7 +635,6 @@ mod memory {
       pub fn new() -> Self {
          Self {
             goal: GameGoals::TakeSamples,
-            projects: Vec::new(),
             my_robot: robot::Robot::new(),
             enemy_robot: robot::Robot::new(),
             available: molecules::Molecules::new(),
@@ -685,13 +642,7 @@ mod memory {
          }
       }
 
-      pub fn get_projects(&self) -> &Vec<molecules::Molecules> {
-         &self.projects
-      }
-
-      pub fn parse_initial_input(&mut self) {
-         self.projects = input_reading::parse_projects();
-      }
+      pub fn ignore_initial_input(&self) { input_reading::ignore_projects(); }
 
       pub fn parse_turn_input(&mut self) {
          let (my_robot, enemy_robot, cloud, available) = input_reading::parse_turn_input();
@@ -734,12 +685,7 @@ mod memory {
          if self.my_robot.get_location() != &module::Module::Sample {
             return command::Command::Goto(module::Module::Sample)
          }
-         let best_sample: sample::SampleRank;
-         if !self.my_robot.are_all_projects_satisfied(&self.projects) {
-            best_sample = self.my_robot.pick_sample_based_on_projects();
-         } else {
-            best_sample = self.my_robot.pick_sample_based_on_expertise()
-         }
+         let best_sample = self.my_robot.pick_sample_based_on_expertise();
          return command::Command::Connect(connect_options::ConnectOptions::SampleRank(best_sample));
       }
 
@@ -800,8 +746,7 @@ mod memory {
       }
 
       fn drop_samples(&mut self) -> command::Command {
-         let mut samples_to_drop: Vec<&sample::Sample> = self.my_robot.get_impossible_samples(&self.available);
-         samples_to_drop.extend(self.my_robot.get_project_irrelevant_samples(&self.projects));
+         let samples_to_drop: Vec<&sample::Sample> = self.my_robot.get_impossible_samples(&self.available);
          if samples_to_drop.len() == 0 {
             if self.my_robot.has_enough_samples() {
                self.goal = GameGoals::GatherMolecules;
@@ -821,11 +766,10 @@ mod memory {
 
 fn main() {
    let mut state_machine = memory::Memory::new();
-   state_machine.parse_initial_input();
+   state_machine.ignore_initial_input();
    loop {
       state_machine.parse_turn_input();
       // eprintln!("{:?}", state_machine);
-      state_machine.get_projects().iter().for_each(|project| eprintln!("{:?}", project));
       println!("{}", state_machine.process_turn().to_string());
    }
 }
