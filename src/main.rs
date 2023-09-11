@@ -650,7 +650,6 @@ mod memory {
          // TODO: try project strategy
          match self.goal {
             GameGoals::TakeSamples => {
-               // TODO: take perspective samples from cloud
                return self.take_samples();
             },
             GameGoals::ResearchSamples => {
@@ -670,6 +669,7 @@ mod memory {
       }
 
       fn take_samples(&mut self) -> command::Command {
+         // TODO: take perspective samples from cloud
          if self.my_robot.has_maximum_samples() {
             self.goal = GameGoals::ResearchSamples;
             return self.process_turn();
@@ -737,18 +737,22 @@ mod memory {
          return command::Command::Connect(connect_options::ConnectOptions::SampleId(sample.get_id()));
       }
 
+      // TODO: rename method and goal to drop_samples and move logic for getting unwanted samples into robot
       fn drop_impossible_samples(&mut self) -> command::Command {
-         // TODO: drop samples that cannot be produced to the cloud
-         // TODO: take more samples if I have less than 2 good ones
-         if self.my_robot.get_held_samples().len() == 0 {
-            self.goal = GameGoals::TakeSamples;
+         let samples_to_drop = self.my_robot.get_held_samples().iter().filter(|sample| !self.my_robot.can_produce_sample(sample, &self.available)).collect::<Vec<_>>();
+         if samples_to_drop.len() == 0 {
+            if self.my_robot.get_held_samples().len() >= 2 {
+               self.goal = GameGoals::GatherMolecules;
+            } else {
+               self.goal = GameGoals::TakeSamples;
+            }
             return self.process_turn();
          }
          if self.my_robot.get_location() != &module::Module::Diagnosis {
             return command::Command::Goto(module::Module::Diagnosis);
          }
 
-         return command::Command::Connect(connect_options::ConnectOptions::SampleId(self.my_robot.get_held_samples()[0].get_id()));
+         return command::Command::Connect(connect_options::ConnectOptions::SampleId(samples_to_drop[0].get_id()));
       }
    }
 }
