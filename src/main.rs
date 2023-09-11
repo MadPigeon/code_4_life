@@ -8,7 +8,7 @@
  * 2. Analyze them at the DIAGNOSIS module
  * 3. Gather required molecules for the medicines at the MOLECULES module
  * 4. Produce the medicines at the LABORATORY modue
- * 
+ *
  * can carry up to 3 sample data files and 10 molecules
  * molecule types = A,B,C,D,E
  */
@@ -33,6 +33,7 @@ mod input_reading {
 
    let mut projects = Vec::new();
    for _ in 0..project_count {
+      input_line.clear();
       io::stdin().read_line(&mut input_line).unwrap();
       let inputs = input_line.split_whitespace().collect::<Vec<_>>();
       projects.push(molecules::Molecules::from_slice(&inputs[0..5]));
@@ -55,7 +56,7 @@ mod input_reading {
       let available = molecules::Molecules::from_slice(&inputs[0..5]);
 
       let mut cloud = Vec::new();
-      
+
       input_line.clear();
       io::stdin().read_line(&mut input_line).unwrap();
       let sample_count = parse_input!(input_line, u16);
@@ -63,14 +64,14 @@ mod input_reading {
          input_line.clear();
          io::stdin().read_line(&mut input_line).unwrap();
          let inputs = input_line.split_whitespace().collect::<Vec<_>>();
-         
+
          let sample_id = parse_input!(inputs[0], u8);
          let carried_by = carried_by::CarriedBy::from_integer(parse_input!(inputs[1], i8)).unwrap();
          let rank = sample::SampleRank::from_integer(parse_input!(inputs[2], i8)).unwrap();
          let expertise_gain: molecules::Molecules = molecules::Molecules::from_letter(inputs[3].chars().next().unwrap());
          let health = sample::SampleHealth::from_integer(parse_input!(inputs[4], i8));
          let cost = molecules::Molecules::from_slice(&inputs[5..10]);
-         
+
          let sample = sample::Sample::new(sample_id, rank, health, cost, expertise_gain);
          match carried_by {
             carried_by::CarriedBy::Me => {
@@ -188,7 +189,7 @@ mod sample {
           }
       }
    }
-   
+
    impl SampleHealth {
       pub fn from_integer(number: i8) -> Self {
          if number < 0 {
@@ -303,7 +304,7 @@ mod molecules {
             e: 0,
          }
       }
-   
+
       pub fn from_slice(slice: &[&str]) -> Self {
          if slice.len() >= Self::MIN_CONSTRUCTOR_SLICE_LENGTH {
             Self {
@@ -317,15 +318,15 @@ mod molecules {
             panic!("Tried reading molecule from a short slice");
          }
       }
-   
+
       pub fn len(&self) -> i8 {
          self.a + self.b + self.c + self.d + self.e
       }
-   
+
       pub fn is_not_positive(&self) -> bool {
          self.a <= 0 && self.b <= 0 && self.c <= 0 && self.d <= 0 && self.e <= 0
       }
-   
+
       pub fn from_letter(letter: char) -> Self {
          let mut molecules = Molecules::new();
          match letter {
@@ -338,7 +339,7 @@ mod molecules {
          }
          molecules
       }
-   
+
       pub fn set_minues_to_zero(&self) -> Molecules {
          let mut new_non_zero = self.clone();
          if new_non_zero.a < 0 {
@@ -358,7 +359,7 @@ mod molecules {
          }
          new_non_zero
       }
-   
+
       pub fn has_enough(&self, required: &Molecules) -> bool {
          if self.a - required.a < 0 {
             return false;
@@ -377,7 +378,7 @@ mod molecules {
          }
          true
       }
-   
+
       pub fn get_next_molecule(&self) -> Option<Molecule> {
          if self.a > 0 {
             return Some(Molecule::A);
@@ -396,11 +397,19 @@ mod molecules {
          }
          return None;
       }
+
+      pub fn has_any_negatives(&self) -> bool {
+         self.a < 0
+         || self.b < 0
+         || self.c < 0
+         || self.d < 0
+         || self.e < 0
+      }
    }
 
    impl Add<&Molecules> for &Molecules {
       type Output = Molecules;
-   
+
       fn add(self, other: &Molecules) -> Molecules {
          Molecules {
          a: self.a + other.a,
@@ -411,10 +420,10 @@ mod molecules {
          }
       }
    }
-   
+
    impl Sub<&Molecules> for &Molecules {
       type Output = Molecules;
-   
+
       fn sub(self, other: &Molecules) -> Molecules {
          Molecules {
          a: self.a - other.a,
@@ -576,7 +585,7 @@ mod robot {
          let remaining_required_molecules = needed_molecules.set_minues_to_zero();
          if remaining_required_molecules.len() + self.inventory.len() > Self::MAX_MOLECULES {
              return false;
-         }     
+         }
          available.has_enough(&remaining_required_molecules)
       }
 
@@ -590,12 +599,37 @@ mod robot {
          }
       }
 
+      pub fn pick_sample_based_on_projects(&self) -> sample::SampleRank {
+         sample::SampleRank::LittleHealth
+      }
+
       pub fn get_impossible_samples(&self, available: &molecules::Molecules) -> Vec<&sample::Sample> {
          self.get_held_samples().iter().filter(|sample: &&sample::Sample| !self.can_produce_sample(sample, available)).collect::<Vec<_>>()
       }
 
       pub fn has_enough_samples(&self) -> bool {
          self.held_samples.len() >= 2
+      }
+
+      pub fn are_all_projects_satisfied(&self, projects: &Vec<molecules::Molecules>) -> bool {
+         projects.iter().all(|project| {
+            (project - &self.expertise).is_not_positive()
+         })
+      }
+
+      pub fn get_project_irrelevant_samples<'a>(&self, projects: &'a Vec<molecules::Molecules>) -> Vec<&sample::Sample> {
+         let mut total_required_expertise = molecules::Molecules::new();
+         // TODO: merge expertise instead of adding it
+         for project in projects {
+             total_required_expertise = &total_required_expertise + project;
+         }
+         let mut irrelevant_samples = Vec::new();
+         for sample in &self.held_samples {
+            if (&total_required_expertise - sample.get_expertise_gain()).has_any_negatives() {
+                 irrelevant_samples.push(sample);
+             }
+         }
+         irrelevant_samples
       }
    }
 
@@ -639,6 +673,10 @@ mod memory {
             available: molecules::Molecules::new(),
             cloud: Vec::new(),
          }
+      }
+
+      pub fn get_projects(&self) -> &Vec<molecules::Molecules> {
+         &self.projects
       }
 
       pub fn parse_initial_input(&mut self) {
@@ -687,8 +725,13 @@ mod memory {
          if self.my_robot.get_location() != &module::Module::Sample {
             return command::Command::Goto(module::Module::Sample)
          }
-         let rank: sample::SampleRank = self.my_robot.pick_sample_based_on_expertise();
-         return command::Command::Connect(connect_options::ConnectOptions::SampleRank(rank));
+         let best_sample: sample::SampleRank;
+         if !self.my_robot.are_all_projects_satisfied(&self.projects) {
+            best_sample = self.my_robot.pick_sample_based_on_projects();
+         } else {
+            best_sample = self.my_robot.pick_sample_based_on_expertise()
+         }
+         return command::Command::Connect(connect_options::ConnectOptions::SampleRank(best_sample));
       }
 
       fn research_samples(&mut self) -> command::Command {
@@ -748,7 +791,8 @@ mod memory {
       }
 
       fn drop_samples(&mut self) -> command::Command {
-         let samples_to_drop: Vec<&sample::Sample> = self.my_robot.get_impossible_samples(&self.available);
+         let mut samples_to_drop: Vec<&sample::Sample> = self.my_robot.get_impossible_samples(&self.available);
+         samples_to_drop.extend(self.my_robot.get_project_irrelevant_samples(&self.projects));
          if samples_to_drop.len() == 0 {
             if self.my_robot.has_enough_samples() {
                self.goal = GameGoals::GatherMolecules;
@@ -772,6 +816,7 @@ fn main() {
    loop {
       state_machine.parse_turn_input();
       // eprintln!("{:?}", state_machine);
+      state_machine.get_projects().iter().for_each(|project| eprintln!("{:?}", project));
       println!("{}", state_machine.process_turn().to_string());
    }
 }
