@@ -266,6 +266,7 @@ mod command {
 
 mod molecules {
    use std::ops::{Add, Sub};
+   use std::cmp::max;
 
    #[derive(Debug)]
    pub enum Molecule {
@@ -404,6 +405,14 @@ mod molecules {
          || self.c < 0
          || self.d < 0
          || self.e < 0
+      }
+
+      pub fn merge(&mut self, project: &Molecules) {
+         self.a = max(self.a, project.a);
+         self.b = max(self.b, project.b);
+         self.c = max(self.c, project.c);
+         self.d = max(self.d, project.d);
+         self.e = max(self.e, project.e);
       }
    }
 
@@ -619,10 +628,11 @@ mod robot {
 
       pub fn get_project_irrelevant_samples<'a>(&self, projects: &'a Vec<molecules::Molecules>) -> Vec<&sample::Sample> {
          let mut total_required_expertise = molecules::Molecules::new();
-         // TODO: merge expertise instead of adding it
          for project in projects {
-             total_required_expertise = &total_required_expertise + project;
+             total_required_expertise.merge(project);
          }
+         total_required_expertise = &total_required_expertise - &self.expertise;
+         total_required_expertise = total_required_expertise.set_minues_to_zero();
          let mut irrelevant_samples = Vec::new();
          for sample in &self.held_samples {
             if (&total_required_expertise - sample.get_expertise_gain()).has_any_negatives() {
@@ -695,7 +705,6 @@ mod memory {
          if self.my_robot.get_eta() > 0 {
             return command::Command::Wait;
          }
-         // TODO: try project strategy
          match self.goal {
             GameGoals::TakeSamples => {
                return self.take_samples();
