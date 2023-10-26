@@ -1,4 +1,7 @@
 /**
+ * !!!
+ * THIS SOLUTION IS VERY OLD, IT IS THE ONE I BASED THE RUST SOLUTION ON
+ * !!!
  * Bring data on patient samples from the diagnosis machine to the laboratory
  * with enough molecules to produce medicine!
  **/
